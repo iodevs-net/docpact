@@ -68,21 +68,37 @@ def check_deps(
 
 
 def _resolver_ruta(modulo_path: str, base_dir: Path) -> Path:
-    """Resuelve una ruta de módulo relativa al archivo actual."""
+    """Resuelve una ruta de módulo.
+
+    Prueba varias bases: el directorio del archivo actual, y luego la raíz
+    del proyecto (subiendo hasta encontrar .git/ o setup.py/pyproject.toml).
+    """
     ruta = Path(modulo_path)
 
     # Si ya es absoluta (empieza con /)
     if ruta.is_absolute():
         return ruta
 
-    # Si termina en .py, usarla directamente
-    if ruta.suffix == ".py":
-        return (base_dir / ruta).resolve()
+    # Buscar en varias bases
+    bases_a_probar = [base_dir]
 
-    # Si no tiene extensión, probar con .py
-    sin_py = (base_dir / ruta).resolve()
-    if sin_py.exists():
-        return sin_py
+    # Intentar subir desde base_dir hasta encontrar una raíz de proyecto
+    for parent in [base_dir] + list(base_dir.parents):
+        marker = parent / ".git"
+        if marker.exists() or marker.is_dir():
+            bases_a_probar.append(parent)
+            break
+    else:
+        # Si no encontramos .git, probar con la raíz del archivo
+        bases_a_probar.append(base_dir.root)
+
+    for base in bases_a_probar:
+        for variante in [ruta, ruta.with_suffix(".py")]:
+            full = (base / variante).resolve()
+            if full.exists():
+                return full
+
+    # Último recurso: devolver la ruta relativa a base_dir
     return (base_dir / ruta.with_suffix(".py")).resolve()
 
 
@@ -92,7 +108,10 @@ def _verificar_simbolo(
     ref_original: str,
     nombre_funcion: str,
 ) -> list[ErrorParser]:
-    """Verifica que un símbolo (clase, función) exista en un archivo."""
+    """Verifica que un símbolo (clase, función) exista en un archivo.
+
+    Soporta nombres calificados: 'Clase.metodo' busca el método dentro de la clase.
+    """
     try:
         with open(ruta_modulo, "r", encoding="utf-8") as f:
             source = f.read()
@@ -103,11 +122,28 @@ def _verificar_simbolo(
     errores: list[ErrorParser] = []
     encontrado = False
 
-    for node in ast.iter_child_nodes(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            if node.name == simbolo:
-                encontrado = True
+    # Separar nombre calificado: "TicketService.update" → clase="TicketService", metodo="update"
+    partes = simbolo.split(".", 1)
+    nombre_clase = partes[0]
+    nombre_metodo = partes[1] if len(partes) > 1 else None
+
+    if nombre_metodo:
+        # Buscar clase y dentro de ella el método
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == nombre_clase:
+                for item in ast.iter_child_nodes(node):
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        if item.name == nombre_metodo:
+                            encontrado = True
+                            break
                 break
+    else:
+        # Buscar símbolo directo (función o clase)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if node.name == simbolo:
+                    encontrado = True
+                    break
 
     if not encontrado:
         errores.append(ErrorParser(
