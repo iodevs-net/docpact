@@ -61,13 +61,23 @@ def parsear(tokens: list[Token]) -> tuple[Contrato, list[ErrorParser]]:
             continue
 
         if token.tipo == TipoToken.CAMPO_SIMPLE:
-            n, side, out_type, out_desc = _parsear_campo_simple(token, i, errores)
+            n, side, out_type, out_desc, datos_extra = _parsear_campo_simple(token, i, errores)
             i = n
             if side is not None:
                 side_effects = side
             if out_type is not None:
                 output = out_type
                 output_desc = out_desc
+            if datos_extra:
+                if datos_extra["campo"] == "rn":
+                    for item in datos_extra["items"]:
+                        rn_list.append(ReglaNegocio(id=str(item)))
+                elif datos_extra["campo"] == "borde":
+                    for item in datos_extra["items"]:
+                        borde_list.append(CasoBorde(condicion=str(item)))
+                elif datos_extra["campo"] == "dependencias":
+                    for item in datos_extra["items"]:
+                        deps_list.append(Dependencia(ref=str(item)))
             continue
 
         i += 1
@@ -88,41 +98,48 @@ def _parsear_campo_simple(
     token: Token,
     idx: int,
     errores: list[ErrorParser],
-) -> tuple[int, list[SideEffect] | None, str | None, str]:
-    """Parsea 'side_effects: valor' o 'output: type — desc'.
+) -> tuple[int, list[SideEffect] | None, str | None, str, dict | None]:
+    """Parsea 'side_effects: valor', 'output: type — desc', o arrays JSON inline.
 
-    Args:
-        token: El token a parsear.
-        idx: Índice actual en la lista de tokens.
-        errores: Lista de errores para acumular.
+    Arrays JSON inline: rn: [RN-001], dependencias: ["a.py::X"]
 
     Returns:
-        (idx_siguiente, side_effects_list, output_type, output_desc)
+        (idx_siguiente, side_effects_list, output_type, output_desc, datos_extra)
     """
+    import json
     partes = token.valor.split(":", 1)
     if len(partes) < 2:
         errores.append(ErrorParser(
             "general", f"Campo simple mal formado: {token.valor}", token.linea
         ))
-        return idx + 1, None, None, ""
+        return idx + 1, None, None, "", None
 
     nombre = partes[0].strip()
     valor = partes[1].strip()
 
     if nombre == "side_effects":
         if valor.lower() == "ninguno":
-            return idx + 1, [], None, ""
+            return idx + 1, [], None, "", None
         items = [v.strip() for v in valor.split(",")]
         se_list = [SideEffect(descripcion=item) for item in items if item]
-        return idx + 1, se_list, None, ""
+        return idx + 1, se_list, None, "", None
 
     elif nombre == "output":
         if " — " in valor:
             tipo, desc = valor.split(" — ", 1)
-            return idx + 1, None, tipo.strip(), desc.strip()
-        return idx + 1, None, valor, ""
+            return idx + 1, None, tipo.strip(), desc.strip(), None
+        return idx + 1, None, valor, "", None
 
-    return idx + 1, None, None, ""
+    # JSON array inline: rn: [RN-001], dependencias: ["a.py::X"]
+    if valor.startswith("[") and valor.endswith("]"):
+        try:
+            raw = json.loads(valor)
+            if isinstance(raw, list):
+                return idx + 1, None, None, "", {"campo": nombre, "items": raw}
+        except json.JSONDecodeError:
+            pass
+
+    return idx + 1, None, None, "", None
 
 
 def _parsear_campo_compuesto(
