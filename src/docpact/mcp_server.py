@@ -1,10 +1,7 @@
 """MCP server para docpact — expone verificación de CONTRATOS como herramientas.
 
-Cualquier agente (Claude Code, Cursor, etc.) puede llamar estas herramientas
-sin pensar en comandos de terminal.
-
 Protocolo: JSON-RPC 2.0 sobre stdio (MCP estándar).
-Uso: python -m docpact.mcp_server
+Uso: docpact mcp
 """
 
 from __future__ import annotations
@@ -15,7 +12,6 @@ from typing import Any
 
 
 def _responder(id: Any, resultado: Any = None, error: Any = None) -> None:
-    """Envía una respuesta JSON-RPC por stdout."""
     msg: dict[str, Any] = {"jsonrpc": "2.0", "id": id}
     if error:
         msg["error"] = {"code": -32000, "message": str(error)}
@@ -26,7 +22,6 @@ def _responder(id: Any, resultado: Any = None, error: Any = None) -> None:
 
 
 def _notificar(method: str, params: dict | None = None) -> None:
-    """Envía una notificación (sin id, sin respuesta esperada)."""
     msg: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
     if params:
         msg["params"] = params
@@ -34,12 +29,11 @@ def _notificar(method: str, params: dict | None = None) -> None:
     sys.stdout.flush()
 
 
-def main() -> None:
+def main() -> int:
     """Loop principal del MCP server."""
     from docpact.api import check_file, check_proyecto, extract_contratos
     from docpact.config import DocpactConfig
 
-    # Enviar inicialización
     _notificar("initialized")
 
     for line in sys.stdin:
@@ -59,13 +53,7 @@ def main() -> None:
             if method == "initialize":
                 _responder(req_id, {
                     "protocolVersion": "0.1.0",
-                    "capabilities": {
-                        "tools": {
-                            "docpact_check": "Verifica CONTRATOS de un archivo o directorio",
-                            "docpact_extract": "Extrae CONTRATOS de un archivo",
-                            "docpact_score": "Calcula el score AI-Native del proyecto",
-                        }
-                    },
+                    "capabilities": {"tools": {}},
                 })
 
             elif method == "tools/list":
@@ -74,117 +62,72 @@ def main() -> None:
                         {
                             "name": "docpact_check",
                             "description": "Verifica CONTRATOS de un archivo Python. "
-                                           "Retorna funciones, errores, warnings y score. "
-                                           "Args: path (str), strict (bool, opcional).",
+                                           "Retorna score, errores, warnings.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
-                                    "path": {
-                                        "type": "string",
-                                        "description": "Ruta al archivo o directorio"
-                                    },
-                                    "strict": {
-                                        "type": "boolean",
-                                        "description": "Si True, falla si hay funciones sin CONTRATO"
-                                    }
+                                    "path": {"type": "string"},
+                                    "strict": {"type": "boolean"},
                                 },
-                                "required": ["path"]
-                            }
+                                "required": ["path"],
+                            },
                         },
                         {
                             "name": "docpact_extract",
-                            "description": "Extrae todos los CONTRATOS de un archivo o directorio. "
-                                           "Args: path (str), incluir_privadas (bool, opcional).",
+                            "description": "Extrae CONTRATOS de un archivo o directorio.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
-                                    "path": {
-                                        "type": "string",
-                                        "description": "Ruta al archivo o directorio"
-                                    },
-                                    "incluir_privadas": {
-                                        "type": "boolean",
-                                        "description": "Incluir funciones privadas"
-                                    }
+                                    "path": {"type": "string"},
+                                    "incluir_privadas": {"type": "boolean"},
                                 },
-                                "required": ["path"]
-                            }
+                                "required": ["path"],
+                            },
                         },
                         {
                             "name": "docpact_score",
-                            "description": "Calcula el score AI-Native del proyecto completo. "
-                                           "Args: path (str). Return: score (int), nivel (str).",
+                            "description": "Score AI-Native del proyecto.",
                             "inputSchema": {
                                 "type": "object",
                                 "properties": {
-                                    "path": {
-                                        "type": "string",
-                                        "description": "Ruta al proyecto"
-                                    }
+                                    "path": {"type": "string"},
                                 },
-                                "required": ["path"]
-                            }
+                                "required": ["path"],
+                            },
                         },
                     ]
                 })
 
             elif method == "tools/call":
                 tool_name = params.get("name", "")
-                arguments = params.get("arguments", {})
+                args = params.get("arguments", {})
 
                 if tool_name == "docpact_check":
-                    path = arguments.get("path", "")
-                    strict = arguments.get("strict", False)
-                    config = DocpactConfig()
-                    if strict:
-                        config.strict = True
-                    resultado = check_proyecto(path, config=config)
+                    r = check_proyecto(args.get("path", ""),
+                                       strict=args.get("strict", False))
                     _responder(req_id, {
-                        "total_funciones": resultado.total_funciones,
-                        "funciones_con_contrato": resultado.funciones_con_contrato,
-                        "errores": resultado.total_errores,
-                        "warnings": resultado.total_warnings,
-                        "score": resultado.calcular_score(),
-                        "nivel": resultado.nivel,
-                        "valido": resultado.total_errores == 0,
-                        "detalle": [
-                            {
-                                "archivo": a.archivo,
-                                "funciones": [
-                                    {
-                                        "nombre": f.nombre,
-                                        "linea": f.linea,
-                                        "valido": f.valido,
-                                        "hallazgos": [
-                                            {"tipo": h.tipo, "mensaje": h.mensaje,
-                                             "sugerencia": h.sugerencia}
-                                            for h in f.hallazgos
-                                        ],
-                                    }
-                                    for f in a.funciones
-                                ],
-                            }
-                            for a in resultado.archivos
-                        ],
+                        "valido": r.total_errores == 0,
+                        "errores": r.total_errores,
+                        "warnings": r.total_warnings,
+                        "score": r.calcular_score(),
+                        "nivel": r.nivel,
+                        "total_funciones": r.total_funciones,
+                        "funciones_con_contrato": r.funciones_con_contrato,
                     })
 
                 elif tool_name == "docpact_extract":
-                    path = arguments.get("path", "")
-                    incluir_privadas = arguments.get("incluir_privadas", False)
-                    contratos = extract_contratos(path, incluir_privadas=incluir_privadas)
-                    _responder(req_id, contratos)
+                    cs = extract_contratos(args.get("path", ""),
+                                           incluir_privadas=args.get("incluir_privadas", False))
+                    _responder(req_id, cs)
 
                 elif tool_name == "docpact_score":
-                    path = arguments.get("path", "")
-                    config = DocpactConfig()
-                    resultado = check_proyecto(path, config=config)
+                    r = check_proyecto(args.get("path", ""))
                     _responder(req_id, {
-                        "score": resultado.calcular_score(),
-                        "nivel": resultado.nivel,
-                        "total_funciones": resultado.total_funciones,
-                        "funciones_con_contrato": resultado.funciones_con_contrato,
-                        "errores": resultado.total_errores,
-                        "warnings": resultado.total_warnings,
+                        "score": r.calcular_score(),
+                        "nivel": r.nivel,
+                        "total_funciones": r.total_funciones,
+                        "funciones_con_contrato": r.funciones_con_contrato,
+                        "errores": r.total_errores,
                     })
 
                 else:
@@ -196,6 +139,8 @@ def main() -> None:
 
         except Exception as e:
             _responder(req_id, error=str(e))
+
+    return 0
 
 
 if __name__ == "__main__":

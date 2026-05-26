@@ -63,6 +63,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Reporte detallado con sugerencias"
     )
 
+    # ├─ mcp
+    mcp_parser = subparsers.add_parser(
+        "mcp", help="Inicia el MCP server para agentes (JSON-RPC sobre stdio)"
+    )
+
     # ├─ init  (Fase 4 — placeholder)
     init_parser = subparsers.add_parser(
         "init", help="Genera esqueletos de CONTRATO para funciones sin contrato"
@@ -87,6 +92,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_check(args)
     elif args.command == "init":
         return _cmd_init(args)
+    elif args.command == "mcp":
+        return _cmd_mcp(args)
     else:
         parser.print_help()
         return 0
@@ -254,6 +261,12 @@ def _cmd_check(args: argparse.Namespace) -> int:
         # strict mode: funciones sin CONTRATO también fallan
         return 1
     return 0
+
+
+def _cmd_mcp(args: argparse.Namespace) -> int:
+    """Comando mcp: inicia el MCP server para agentes."""
+    from docpact.mcp_server import main as mcp_main
+    return mcp_main()
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
