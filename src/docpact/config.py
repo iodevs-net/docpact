@@ -66,9 +66,15 @@ class DocpactConfig:
         """Verifica si un path debe ser excluido del análisis."""
         # Normalizar exclude: "tests/" → "tests"
         excl = {e.rstrip("/") for e in self.exclude}
+        # Separar patrones con glob (*) para matching por prefijo
+        prefijos = {e.rstrip("*") for e in excl if e.endswith("*")}
+        exactos = {e for e in excl if not e.endswith("*")}
         for parte in path.parts:
-            if parte in excl:
+            if parte in exactos:
                 return True
+            for prefijo in prefijos:
+                if parte.startswith(prefijo):
+                    return True
             # También excluir por extensión si es un archivo
             if parte == path.name:
                 if path.suffix not in (".py", ""):

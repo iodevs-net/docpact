@@ -137,13 +137,24 @@ def _verificar_simbolo(
                             encontrado = True
                             break
                 break
-    else:
-        # Buscar símbolo directo (función o clase)
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                if node.name == simbolo:
+    # Buscar símbolo directo (función, clase o constante)
+    # Esto corre para símbolos simples (sin calificar) Y también después
+    # de buscar método calificado (para cubrir casos mixtos)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.name == simbolo:
+                encontrado = True
+                break
+        # También verificar asignaciones de módulo (constantes, variables)
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id == simbolo:
+                        encontrado = True
+                        break
+            elif isinstance(node, ast.AnnAssign):
+                if isinstance(node.target, ast.Name) and node.target.id == simbolo:
                     encontrado = True
-                    break
 
     if not encontrado:
         errores.append(ErrorParser(

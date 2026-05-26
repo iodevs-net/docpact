@@ -206,17 +206,14 @@ def _insertar_contrato_en_docstring(
     """
     lineas = fuente.split("\n")
 
-    # Detectar si ya hay docstring
+    # Detectar si ya hay docstring (solo el primer statement del cuerpo)
     doc_expr = None
-    for item in ast.iter_child_nodes(node):
-        if isinstance(item, ast.Expr):
-            val = item.value
-            if isinstance(val, ast.Constant) and isinstance(val.value, str):
-                doc_expr = (item, val)
-                break
-            if isinstance(val, ast.Str):
-                doc_expr = (item, val)
-                break
+    if node.body and isinstance(node.body[0], ast.Expr):
+        val = node.body[0].value
+        if isinstance(val, ast.Constant) and isinstance(val.value, str):
+            doc_expr = (node.body[0], val)
+        elif isinstance(val, ast.Str):
+            doc_expr = (node.body[0], val)
 
     # Calcular indentación correcta basada en la posición del nodo
     base_indent = node.col_offset if node.col_offset is not None else 0
