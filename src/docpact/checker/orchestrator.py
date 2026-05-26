@@ -115,6 +115,10 @@ class ResultadoProyecto:
     def total_warnings(self) -> int:
         return sum(a.total_warnings for a in self.archivos)
 
+    @property
+    def total_archivos(self) -> int:
+        return len(self.archivos)
+
     def calcular_score(self) -> int:
         """Calcula el score AI-Native (0-100)."""
         if self.total_funciones == 0:
@@ -381,7 +385,7 @@ def check_proyecto(
     path: str | Path,
     config: Optional[DocpactConfig] = None,
 ) -> ResultadoProyecto:
-    """Verifica un proyecto completo (archivo o directorio).
+    """Verifica un proyecto completo (archivo o directorio) en paralelo.
 
     Args:
         path: Ruta al archivo o directorio.
@@ -401,12 +405,24 @@ def check_proyecto(
     else:
         archivos = []
 
-    resultado = ResultadoProyecto(config=config)
-    for archivo in archivos:
-        if config.debe_excluir(archivo):
-            continue
-        ra = check_file(archivo, config)
-        if ra.funciones:
-            resultado.archivos.append(ra)
+    archivos = [a for a in archivos if not config.debe_excluir(a)]
 
+    if not archivos:
+        return ResultadoProyecto(config=config)
+
+    # Procesar en paralelo con ThreadPoolExecutor
+    import concurrent.futures
+    resultados_archivos: list[ResultadoArchivo] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        futuros = {pool.submit(check_file, a, config): a for a in archivos}
+        for futuro in concurrent.futures.as_completed(futuros):
+            try:
+                ra = futuro.result()
+                if ra.funciones:
+                    resultados_archivos.append(ra)
+            except Exception:
+                pass  # Error en un archivo no detiene el proyecto
+
+    resultado = ResultadoProyecto(config=config)
+    resultado.archivos = resultados_archivos
     return resultado
