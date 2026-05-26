@@ -48,18 +48,17 @@ def check_side_effects(
                        f"o elimina las llamadas: {', '.join(efectos_encontrados)}",
         ))
 
-    # Caso 2: declaró efectos que no se encontraron (pueden ser condicionales)
-    # Esto es warning, no error — los efectos condicionales son válidos
-    if efectos_declarados:
-        for efe in efectos_declarados:
-            if not any(efe in ef for ef in efectos_encontrados):
-                errores.append(ErrorParser(
-                    "side_effects",
-                    f"'{nombre_funcion}': side_effect '{efe}' declarado "
-                    f"pero no encontrado en el código (puede ser condicional)",
-                    sugerencia="Si es condicional, está bien. "
-                               "Si no, corrige el CONTRATO o agrega la lógica faltante.",
-                ))
+    # Caso 2: declaró efectos pero NO se encontró NINGUNA categoría
+    # (descripciones en español vs categorías técnicas son incomparables)
+    # Solo advertir si hay 0 efectos encontrados siendo que se declararon
+    if efectos_declarados and not efectos_encontrados:
+        errores.append(ErrorParser(
+            "side_effects",
+            f"'{nombre_funcion}': declaró side_effects pero no se "
+            f"detectaron llamadas con patrones conocidos",
+            sugerencia="Si la función delega a otros servicios, está bien. "
+                       "Agrega patrones personalizados en docpact.toml si quieres tracking fino.",
+        ))
 
     return errores
 

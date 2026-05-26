@@ -64,9 +64,15 @@ class DocpactConfig:
 
     def debe_excluir(self, path: Path) -> bool:
         """Verifica si un path debe ser excluido del análisis."""
+        # Normalizar exclude: "tests/" → "tests"
+        excl = {e.rstrip("/") for e in self.exclude}
         for parte in path.parts:
-            if parte in self.exclude:
+            if parte in excl:
                 return True
+            # También excluir por extensión si es un archivo
+            if parte == path.name:
+                if path.suffix not in (".py", ""):
+                    return True
         return False
 
     @classmethod

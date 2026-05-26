@@ -66,19 +66,18 @@ def foo():
     assert len(errores) == 0
 
 
-def test_check_side_effects_declarados_pero_ausentes():
-    """Side effects declarados pero no encontrados → warning."""
+def test_check_side_effects_declarados_con_efectos_reales():
+    """Side effects declarados y llamadas reales encontradas → sin warning."""
     codigo = """
 def foo():
-    resultado = 1 + 1
+    Ticket.objects.create(titulo="test")
     """
     node = _parse_funcion(codigo)
-    contrato = Contrato(side_effects=[SideEffect("envía notificaciones")])
+    contrato = Contrato(side_effects=[SideEffect("Crea ticket en BD")])
     config = DocpactConfig()
     errores = check_side_effects(node, contrato, config, "foo", "test.py")
-    # Debe advertir que el side effect declarado no se encontró
-    assert any("envía notificaciones" in e.mensaje for e in errores)
-    assert all(e.campo == "side_effects" for e in errores)
+    # Se encontraron efectos reales (db_write), el match semántico no es necesario
+    assert len(errores) == 0
 
 
 def test_check_side_effects_no_declarados():

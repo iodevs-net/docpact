@@ -175,8 +175,8 @@ def check_file(
         with open(path, "r", encoding="utf-8") as f:
             fuente = f.read()
         tree = ast.parse(fuente, filename=str(path))
-    except (SyntaxError, FileNotFoundError) as e:
-        # Archivo con error de sintaxis — reportamos pero seguimos
+    except (SyntaxError, FileNotFoundError, UnicodeDecodeError) as e:
+        # Archivo con error de sintaxis o binario — seguimos
         return ResultadoArchivo(archivo=str(path))
 
     resultado = ResultadoArchivo(archivo=str(path))
