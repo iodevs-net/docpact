@@ -83,6 +83,10 @@ def main(argv: list[str] | None = None) -> int:
         "--batch", action="store_true",
         help="Procesar todo el directorio"
     )
+    init_parser.add_argument(
+        "--force", action="store_true",
+        help="Forzar inserción en funciones con docstring existente (peligroso)"
+    )
 
     args = parser.parse_args(argv)
 
@@ -273,13 +277,14 @@ def _cmd_init(args: argparse.Namespace) -> int:
     """Comando init: genera esqueletos de CONTRATO para funciones sin contrato."""
     from docpact.cli.init import init_function, init_batch
 
+    safe = not args.force
     path = args.path
     if args.function:
-        exito, msg = init_function(path, args.function)
+        exito, msg = init_function(path, args.function, safe=safe)
         print(f"{'✅' if exito else '⚠️'} {msg}")
         return 0 if exito else 1
     elif args.batch:
-        resultados = init_batch(path)
+        resultados = init_batch(path, safe=safe)
         exito = sum(1 for _, ok, _ in resultados if ok)
         total = len(resultados)
         print(f"📝 {exito}/{total} CONTRATOS generados")

@@ -144,31 +144,38 @@ def _detectar_dependencias(fuente: str, path: Path) -> list[str]:
     """Detecta dependencias a módulos locales del proyecto.
 
     Busca imports relativos o de módulos del mismo proyecto.
+    Retorna rutas relativas al proyecto, sin prefijo del directorio del proyecto.
     """
     tree = ast.parse(fuente)
     deps: list[str] = []
     project_root = _find_project_root(path)
 
+    if not project_root:
+        return []
+
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             module = node.module or ""
-            # Solo imports locales (relativos o del proyecto)
             if node.level and node.level > 0:
                 # Import relativo: from .models import Ticket
-                parts = path.parent.parts
+                current = path.parent
                 for _ in range(node.level - 1):
-                    parts = parts[:-1]
-                rel_path = "/".join(parts[-2:]) if len(parts) >= 2 else parts[-1]
-                names = [a.name for a in node.names if not a.name.startswith("_")]
-                if names:
-                    deps.append(f"{rel_path}/{module}.py::{names[0]}")
+                    current = current.parent
+                # Convertir a ruta relativa al proyecto
+                try:
+                    rel = current.relative_to(project_root)
+                    module_rel = module.replace(".", "/")
+                    names = [a.name for a in node.names if not a.name.startswith("_")]
+                    if names:
+                        deps.append(f"{rel}/{module_rel}.py::{names[0]}")
+                except ValueError:
+                    pass
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                name = alias.name
-                if project_root:
-                    module_path = Path(project_root) / name.replace(".", "/")
-                    if module_path.exists():
-                        deps.append(f"{name}.py")
+                name = alias.name.replace(".", "/")
+                module_path = project_root / name
+                if module_path.exists() or (project_root / f"{name}.py").exists():
+                    deps.append(f"{name}.py")
 
     return deps[:5]  # Máximo 5 dependencias
 
@@ -211,7 +218,9 @@ def _insertar_contrato_en_docstring(
                 doc_expr = (item, val)
                 break
 
-    indent = " " * 4  # indentación estándar del cuerpo
+    # Calcular indentación correcta basada en la posición del nodo
+    base_indent = node.col_offset if node.col_offset is not None else 0
+    indent = " " * (base_indent + 4)  # +4 para el cuerpo de la función
 
     if doc_expr:
         expr_node, _ = doc_expr
@@ -251,8 +260,9 @@ def _insertar_contrato_en_docstring(
             doc_lines.append(indent + bloque_linea)
         doc_lines.append(f'{indent}"""')
 
-        # Insertar después de la línea def
-        insert_line = node.lineno  # 1-based
+        # Insertar antes del primer statement del cuerpo (después del signature)
+        # node.body[0].lineno es 1-based; restamos 1 para convertir a 0-based
+        insert_line = node.body[0].lineno - 1  # índice 0-based antes del primer statement
         doc_lines.reverse()
         for dl in doc_lines:
             lineas.insert(insert_line, dl)
@@ -263,6 +273,7 @@ def _insertar_contrato_en_docstring(
 def init_function(
     archivo: str | Path,
     nombre_funcion: str,
+    safe: bool = True,
 ) -> tuple[bool, str]:
     """Genera e inserta un CONTRATO para una función específica.
 
@@ -290,6 +301,10 @@ def init_function(
     doc = ast.get_docstring(nodo, clean=False) or ""
     if tokenizar(doc):
         return False, f"'{nombre_funcion}' ya tiene CONTRATO"
+
+    # Modo safe: saltar funciones con docstring existente (sin CONTRATO)
+    if safe and doc.strip():
+        return False, f"'{nombre_funcion}' tiene docstring existente sin CONTRATO (usá --force para agregar)"
 
     bloque = _generar_bloque(nodo, nombre_funcion, fuente, path)
     exito, nueva_fuente = _insertar_contrato_en_docstring(fuente, nodo, nombre_funcion, bloque)
@@ -328,6 +343,7 @@ def _listar_funciones_publicas(path: Path) -> list[str]:
 
 def init_batch(
     path: str | Path,
+    safe: bool = True,
 ) -> list[tuple[str, bool, str]]:
     """Genera CONTRATOS para todas las funciones públicas sin CONTRATO.
 
@@ -347,7 +363,7 @@ def init_batch(
 
         funciones = _listar_funciones_publicas(archivo)
         for nombre in funciones:
-            exito, msg = init_function(archivo, nombre)
+            exito, msg = init_function(archivo, nombre, safe=safe)
             resultados.append((nombre, exito, msg))
 
     return resultados
