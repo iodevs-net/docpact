@@ -95,8 +95,15 @@ def _extraer_ids_rn(
     comentarios: list[str],
     prefijo: str = "RN-",
 ) -> list[str]:
-    """Extrae IDs de reglas de negocio (RN-XXX) de comentarios."""
-    patron = re.compile(rf"{re.escape(prefijo)}\d{{3,}}")
+    """Extrae IDs de reglas de negocio de comentarios.
+    
+    Soporta formatos:
+    - RN-XXX (RN-004, RN-005)
+    - RN-XXX-XXX (RN-SEG-005, RN-C-016)
+    - RN-XXX (RN-SEG)
+    - Gotcha #XXX (Gotcha #034)
+    """
+    patron = re.compile(rf"{re.escape(prefijo)}[\w-]+|Gotcha #\d+")
     ids: list[str] = []
     for comentario in comentarios:
         for match in patron.finditer(comentario):
