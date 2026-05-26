@@ -1,0 +1,245 @@
+## 1. RESUMEN EJECUTIVO (BLUF)
+
+Confianza global aproximada: 80–85% (limitada por la falta de benchmarks que aíslen “estilo de código” como variable independiente). [verdent](https://www.verdent.ai/es/blog/swe-bench-verified-technical-report)
+El formato óptimo “post-humano” no es código fuente clásico, sino una **triple representación**: (1) **AST serializado canónico**, (2) **grafo de código a nivel de sistema**, y (3) **vistas textuales WET y altamente explícitas**, generadas como “build artifact” para el LLM. [arxiv](https://arxiv.org/abs/2602.06671)
+Los comentarios efectivos dejan de ser narrativa humana y pasan a ser **metadatos estructurados** (esquemas, invariantes, contratos) embebidos en el AST/grafo, no murallas de texto. [arxiv](https://arxiv.org/html/2504.04553v2)
+La estructura del repositorio deja de estar optimizada para personas (carpetas semánticas, archivos pequeños) y se optimiza para **localidad de contexto**: paquetes de problema auto-contenidos, árboles linealizados y mapas de código en un solo flujo. [github](https://github.com/kennyfrc/llm_ctx)
+El blueprint resultante para ioDesk es un **repo AI-native** donde el “source of truth” es una base de AST+grafo+metadatos; el código legible es sólo una vista derivada, y todo está diseñado para minimizar búsqueda dispersa y maximizar precisión estructural en las ediciones del agente. [community.openai](https://community.openai.com/t/new-methodology-for-editing-existing-code-files-using-llm-generated-snippets/1108578)
+
+***
+
+## 2. EL PARADIGMA POST-HUMANO (Hallazgos Clave)
+
+- **ASTs serializados reducen tokens y mantienen calidad**: AST(NIT) demuestra que alimentar al LLM un AST serializado (con detalles léxicos preservados) reduce longitud de entrada y tiempo de entrenamiento manteniendo calidad de tareas de resumen de código frente a usar código crudo. [arxiv](https://arxiv.org/html/2602.06671v1)
+- **La estructura explícita (árbol/grafo) mejora tareas de comprensión y localización**: cursos y artículos sobre “AST agentic coding” muestran que ver el programa como árbol, no como texto lineal, permite a agentes navegar dependencias y modificar nodos con mayor precisión; LocAgent y CodeConcise muestran beneficios medibles al representar repositorios como grafos heterogéneos para localización de código. [linkedin](https://www.linkedin.com/learning/exploring-deterministic-llm-programming/understanding-ast-agentic-coding)
+- **La edición basada en AST es más robusta que el patch textual**: herramientas como aiCoder integran snippets generados por LLM usando ASTs para fusionar funciones, métodos y imports sin romper sintaxis ni formato, reportando reducción de conflictos vs find/replace textual. [community.openai](https://community.openai.com/t/new-methodology-for-editing-existing-code-files-using-llm-generated-snippets/1108578)
+- **El “scaffolding” y el empaquetado de contexto dominan el rendimiento en SWE-bench**: informes sobre SWE-bench y SWE-bench Verified muestran que, manteniendo el mismo modelo, cambios en el andamiaje (prompts, herramientas, gestión de contexto y token budgets) alteran fuertemente el rendimiento del agente, subrayando que la forma en que se presenta el repositorio es tan importante como la capacidad bruta del modelo. [arxiv](https://arxiv.org/html/2310.06770v3)
+- **El diseño de lenguajes AI-first converge en gramáticas canónicas y tokens semánticos**: lenguajes y propuestas “AI-native” como A y discusiones sobre lenguajes LLM-first priorizan gramáticas simples, estructuras canónicas y tokens semánticamente densos para maximizar la capacidad de autocompletado, refactor y razonamiento del modelo. [ointel](https://ointel.org/a-language)
+- **Sistemas de comprensión de codebase piden estructuras predefinidas, no texto libre**: trabajos sobre sistemas de “Human–AI codebase understanding” proponen plantillas estructuradas (tablas de responsabilidades, grafos de dependencia, vistas de arquitectura) para reducir carga cognitiva del LLM, alejándose del mero “texto + comentarios”. [dev](https://dev.to/eabait/beyond-code-generation-llms-for-code-understanding-3ldn)
+- **La comunidad ya empaqueta repos enteros en vistas lineales optimizadas para LLM**: herramientas como llm_ctx, code2prompt y Repo Prompt generan árboles de archivos, mapas de código y bundles textuales únicos para alimentar modelos, indicando que una vista linealizada y estructurada del repo mejora la navegación de agentes frente a exploración file-by-file. [facebook](https://www.facebook.com/0xSojalSec/posts/turn-your-codebase-into-smart-llm-prompts-/1287176666270067/)
+
+***
+
+## 3. LO QUE "SÍ" FUNCIONA PARA AGENTES (Con Evidencia)
+
+- **AST serializado canónico como formato de entrada primario**  
+  → Un AST serializado tipo AST(NIT), donde cada nodo es un tuple de campos fijos separado por delimitadores claros, preserva información léxica a la vez que codifica estructura; esto comprime la secuencia y reduce ambigüedad de parseo para el LLM. [paul-harvey](https://paul-harvey.org/publication/2026-llm-ast-code-summary/)
+  → Matemáticamente, el modelo ve una secuencia de tokens con estructura de campos consistente, lo que reduce la entropía condicional y facilita aprender patrones sobre tipos de nodo/atributos en vez de sobre espacios y estilos arbitrarios. [arxiv](https://arxiv.org/html/2507.00352v1)
+  → AST(NIT muestra igual o mejor calidad de resumen con entradas más cortas, demostrando que la estructura serializada no penaliza tareas semánticas de alto nivel. [arxiv](https://arxiv.org/abs/2602.06671)
+
+- **Representación de grafo de código a nivel repo**  
+  → LocAgent y CodeConcise formalizan el codebase como grafo heterogéneo \(G(V, E)\) donde nodos representan entidades (archivos, clases, funciones) y aristas representan relaciones (contiene, invoca, importa, hereda), habilitando razonamiento multi-hop para localización y modernización de sistemas legados. [linkedin](https://www.linkedin.com/posts/anthony-alcaraz-b80763155_agentic-graph-systems-for-coding-a-convergence-activity-7307418466070708225-Ch65)
+  → Para el LLM, operar sobre trayectorias de grafo reduce la necesidad de “scan completo” lineal del repo; la atención se enfoca en subgrafos relevantes, lo que mejora eficiencia de contexto y precisión de localización. [arxiv](https://arxiv.org/html/2503.09089v2)
+  → Fine-tuning sobre trayectorias de grafo mejora capacidad del agente en navegación estructurada, confirmando que la combinación grafo+LLM supera el texto plano para tareas de code localization. [linkedin](https://www.linkedin.com/posts/anthony-alcaraz-b80763155_agentic-graph-systems-for-coding-a-convergence-activity-7307418466070708225-Ch65)
+
+- **Operaciones de edición a nivel AST, no a nivel diff textual**  
+  → aiCoder parsea código existente y snippet generado a AST, y luego fusiona ambos aplicando reglas estructurales (reemplazar función existente, insertar métodos, añadir imports sin duplicar), antes de regenerar el fuente. [community.openai](https://community.openai.com/t/new-methodology-for-editing-existing-code-files-using-llm-generated-snippets/1108578)
+  → Esto elimina fragilidad de patrones string-based y reduce errores de sintaxis; la operación que el LLM debe producir puede modelarse como JSON estructurado de acciones sobre nodos (rename, replace, insert), como proponen issues en Aider con ejemplos de operaciones tipo `{ "action": "rename", "target": "FunctionDef", ... }`. [github](https://github.com/Aider-AI/aider/issues/3206)
+  → En términos de atención, el modelo aprende a mapear descripciones de cambios a slots estructurales concretos en lugar de ubicar substrings en texto, lo que reduce ambigüedad y colisiones de nombres. [linkedin](https://www.linkedin.com/learning/exploring-deterministic-llm-programming/understanding-ast-agentic-coding)
+
+- **Bundles de contexto lineales generados (árbol de archivos + resúmenes)**  
+  → Herramientas llm_ctx, Repo Prompt y code2prompt generan árboles de archivos, mapas de código y combinan múltiples archivos relevantes en un solo flujo para el modelo, respetando .gitignore y evitando binarios. [linkedin](https://www.linkedin.com/posts/fejes713_little-friendly-tip-on-working-with-llms-activity-7297934979257307138-dExD)
+  → Este enfoque empírico (utilizado por desarrolladores para desbloquear agentes como o1/Claude en codebases grandes) indica que la **contextualización previa** en un solo documento estructurado mejora la capacidad del modelo para razonar sobre relaciones interarchivo frente a navegación fragmentada. [addyosmani](https://addyosmani.com/blog/ai-coding-workflow/)
+  → La linealización controlada reduce overhead de múltiples turnos y la duplicación de contexto en cada llamada, algo importante dados los límites de 2M–20M tokens de lectura/escritura utilizados en evaluaciones como SWE-bench Verified. [epoch](https://epoch.ai/benchmarks/swe-bench-verified)
+
+- **Lenguajes y estilos AI-first con gramática simple y tokens semánticos densos**  
+  → El lenguaje A y los artículos sobre lenguajes LLM-first insisten en gramáticas limpias, estructuras regulares, ausencia de “sugar sintáctico” caótico y tokens semánticos consistentes para maximizar autocompletado y refactor automático por IA. [osada](https://osada.blog/posts/languages-designed-for-llms/)
+  → Esto reduce el espacio de estados sintácticos y hace que un mismo patrón lógico tenga siempre la misma huella de tokens, facilitando la inferencia y la comparación entre fragmentos. [ointel](https://ointel.org/a-language)
+  → IBM y otros resaltan que LLMs de código se benefician de datos de entrenamiento de alta calidad y estilo consistente para generalizar mejor across lenguajes, respaldando la idea de imponer estilo canónico en un lenguaje AI-native. [ibm](https://www.ibm.com/think/insights/code-llm)
+
+- **Estructuras de documentación como tablas/plantillas, no prosa libre**  
+  → Trabajos sobre sistemas de comprensión de codebase proponen “information structures” predefinidas (tablas de módulos, matrices de responsabilidades, vistas de arquitectura) para que el LLM pueda responder preguntas complejas sin lidiar con documentación narrativa dispersa. [dev](https://dev.to/eabait/beyond-code-generation-llms-for-code-understanding-3ldn)
+  → Esto implica que comentarios/docstrings estructurados (por ejemplo, JSON con campos de contrato, efectos secundarios, invariantes) son más útiles para el modelo que párrafos en lenguaje natural de estilo humano. [arxiv](https://arxiv.org/html/2504.04553v2)
+
+***
+
+## 4. LO QUE "NO" FUNCIONA (La trampa del código humano)
+
+- **DRY extremo y alta factorización transversal**  
+  → En práctica de ingeniería humana, DRY mejora mantenibilidad; sin embargo, experiencias recogidas en discusiones sobre LLMs muestran que los modelos tienden a producir código WET (duplicado) y que forzar DRY agresivo complica la comprensión, ya que la lógica se dispersa en helpers y abstracciones genéricas. [linkedin](https://www.linkedin.com/posts/geoffhendrey_how-good-programmers-write-code-dry-dont-activity-7414782850778030082-BPnB)
+  → Para un LLM con ventana finita, cada salto a una abstracción en otro archivo consume tokens y contexto, aumentando el riesgo de omitir condiciones excepcionales o contratos implícitos; los propios autores reconocen que “la forma óptima del código depende de quién lo lee/escribe”. [linkedin](https://www.linkedin.com/posts/geoffhendrey_how-good-programmers-write-code-dry-dont-activity-7414782850778030082-BPnB)
+  → Confianza: Media; no hay ensayo controlado que mida “DRY vs WET” en SWE-bench, pero la combinación de testimonios y el énfasis general en “más contexto explícito” sugiere que **cierto grado de redundancia local** es beneficioso para agentes. [verdent](https://www.verdent.ai/es/blog/swe-bench-verified-technical-report)
+
+- **Comentarios narrativos largos y documentación dispersa**  
+  → IBM y otros señalan que LLMs generan documentación, pero no hay evidencia de que largos bloques narrativos mejoren la ejecución de tareas de modificación de código; al contrario, aumentan el ruido en la secuencia y consumen tokens que podrían dedicar a código operativo. [ibm](https://www.ibm.com/think/insights/code-llm)
+  → Sistemas de comprensión Human–AI recomiendan estructuras compactas y predecibles en lugar de prosa libre, lo que implica que comentarios “literarios” son subóptimos para agentes. [arxiv](https://arxiv.org/html/2504.04553v2)
+  → Confianza: Alta para la parte de token-cost; cualquier token no funcional disminuye la fracción de contexto útil dada una ventana fija. [epoch](https://epoch.ai/benchmarks/swe-bench-verified)
+
+- **Repos estilo “monte de carpetas” con archivos minúsculos muy anidados**  
+  → SWE-bench y su análisis muestran que la *gestión de contexto* y la herramienta de navegación impactan tanto como el modelo; navegar miles de archivos pequeños obliga al agente a gastar tokens en descubrir estructura en lugar de operar sobre representaciones ya consolidadas. [epochai.substack](https://epochai.substack.com/p/what-skills-does-swe-bench-verified-evaluate)
+  → Prácticas de empaquetado de repositorios en bundles únicos (llm_ctx, Repo Prompt) han surgido precisamente para escapar de esta fragmentación, sugiriendo que la topología de carpetas humana no es óptima para modelos. [github](https://github.com/kennyfrc/llm_ctx)
+
+- **Diffs textuales y patches sin comprensión sintáctica**  
+  → Issues en proyectos como Aider señalan que métodos actuales de find/replace o patch textual son frágiles, fácilmente rotos por ligeros cambios de formato o nombres; por ello se propone transición a operaciones de alto nivel sobre AST. [github](https://github.com/Aider-AI/aider/issues/3206)
+  → Herramientas como aiCoder ya muestran de forma práctica que el enfoque textual es inferior para integrar cambios propuestos por LLM en repos reales, motivando un cambio hacia merge sintáctico. [community.openai](https://community.openai.com/t/new-methodology-for-editing-existing-code-files-using-llm-generated-snippets/1108578)
+
+- **Representaciones solo-texto sin estructura para tareas complejas de localización**  
+  → LocAgent y CodeConcise argumentan que representar el codebase únicamente como texto lineal limita el razonamiento multi-hop entre entidades; su grafo heterogéneo captura relaciones que el modelo no puede inferir fácilmente sólo a partir del layout de archivos. [arxiv](https://arxiv.org/html/2503.09089v2)
+  → Evaluaciones de estos sistemas muestran mejoras en localización de código relevante, lo que es crucial para agentes que deben modificar puntos concretos en sistemas grandes. [linkedin](https://www.linkedin.com/posts/anthony-alcaraz-b80763155_agentic-graph-systems-for-coding-a-convergence-activity-7307418466070708225-Ch65)
+
+- **Suponer que “más comentarios humanos” corrigen alucinaciones**  
+  → Estudios tipo SWE-bench+ revelan que buena parte de soluciones “plausibles” pasan tests débiles pero son incorrectas, y que problemas como solution leakage y tests insuficientes distorsionan métricas, indicando que las alucinaciones están ligadas a condiciones de validación y diseño de entorno más que a densidad de comentarios. [openreview](https://openreview.net/forum?id=R40rS2afQ3)
+  → No hay evidencia sólida de que más prosa humana por sí misma reduzca alucinación en agentes de código; el énfasis creciente está en mejores constraints (tests reforzados, herramientas, grafo/AST), no en “explicar más en texto”. [openreview](https://openreview.net/forum?id=R40rS2afQ3)
+
+***
+
+## 5. LA SÍNTESIS ARQUITECTÓNICA (El Blueprint para ioDesk)
+
+Basado en la evidencia, diseño un repositorio AI-native para ioDesk donde **la fuente de verdad es una base de AST+grafo+metadatos**, y el código texto clásico es una vista materializada pensada sólo para interoperar con toolchains humanos/legacy. [arxiv](https://arxiv.org/abs/2602.06671)
+
+### 5.1. Estructura de Archivos
+
+1. **Capa física mínima, capa lógica estructurada**  
+   - Mantener en el VCS sólo tres dominios principales:  
+     1) `/ast/` – snapshots de AST serializados por módulo, en un formato tipo AST(NIT) (tuplas de campos fijos, delimitadores claros, IDs de nodos estables). [paul-harvey](https://paul-harvey.org/publication/2026-llm-ast-code-summary/)
+     2) `/graph/` – representación de grafo de codebase (por ejemplo, JSONL o Parquet) donde cada entrada define nodos (`file`, `class`, `fn`, `endpoint`, `job`) y aristas (`contains`, `calls`, `imports`, `implements`, `owns_config`). [arxiv](https://arxiv.org/html/2503.09089v2)
+     3) `/views/` – vistas derivadas: código fuente legible, bundles lineales de contexto (tipo llm_ctx/Repo Prompt), documentación generada y dashboards. [linkedin](https://www.linkedin.com/posts/fejes713_little-friendly-tip-on-working-with-llms-activity-7297934979257307138-dExD)
+   - El agente no navega carpetas tradicionales; consulta primero el grafo para localizar componentes relevantes y sólo luego accede a vistas textuales. [linkedin](https://www.linkedin.com/posts/anthony-alcaraz-b80763155_agentic-graph-systems-for-coding-a-convergence-activity-7307418466070708225-Ch65)
+
+2. **Paquetes de problema auto-contenidos (“problem pods”)**  
+   - Agrupar código según *cohesión de tarea*, no según capas clásicas (controllers/services/repos) pensadas para humanos.  
+   - Cada “pod” define: entrypoints, lógica interna, dependencias salientes, contratos de datos, tests; todo referenciado explícitamente en el grafo como subgrafo etiquetado. [arxiv](https://arxiv.org/html/2504.04553v2)
+   - Objetivo: que un pod entero quepa, en AST+metadatos, dentro de una ventana de contexto razonable (por ejemplo 50–150k tokens comprimidos), minimizando saltos a otros pods. [epoch](https://epoch.ai/benchmarks/swe-bench-verified)
+
+3. **Snapshots versionados de contexto para agentes**  
+   - Mantener, en `/views/context/`, bundles generados automáticamente por cambios en el grafo, al estilo de Repo Prompt:  
+     - Árbol lógico del pod.  
+     - Lista de nodos relevantes ordenados por centralidad (degree, PageRank en el grafo).  
+     - Resúmenes sintéticos por nodo (descripción corta generada por LLM + hashes de AST para detectar drift). [github](https://github.com/kennyfrc/llm_ctx)
+   - El agente ioDesk trabaja siempre sobre estos bundles como “contexto de entrada” y produce operaciones AST sobre ellos, no parches ad hoc sobre archivos sueltos. [github](https://github.com/Aider-AI/aider/issues/3206)
+
+### 5.2. Sintaxis y Tipado
+
+1. **Lenguaje host + sub-lenguaje AI-native**  
+   - Reutilizar un lenguaje host mainstream (p.ej. TypeScript, Rust, Python) para interoperabilidad, pero definir un **subset AI-native**:  
+     - Gramática restringida y sin features “mágicas” (metaprogramación complicada, macros opacas, overloading confuso). [osada](https://osada.blog/posts/languages-designed-for-llms/)
+     - Patrones de control y módulos estandarizados (p.ej. siempre `handle_<event>` para handlers, `service_<domain>` para servicios). [ointel](https://ointel.org/a-language)
+   - El AST serializado debe seguir un esquema fijo por lenguaje host, para que el modelo aprenda distribuciones estables. [paul-harvey](https://paul-harvey.org/publication/2026-llm-ast-code-summary/)
+
+2. **Tipado e invariantes como nodos de primer orden**  
+   - Incluir tipos, invariantes y pre/post-condiciones como nodos explícitos en el AST, no sólo como anotaciones de texto. [arxiv](https://arxiv.org/html/2507.00352v1)
+   - Por ejemplo, un nodo `Contract` con campos `{pre: [...], post: [...], effects: [...], throws: [...]}`, referenciado desde el nodo `Function`.  
+   - Esto permite que el LLM razone sobre contratos sin parsear free-text; las invariantes se convierten en features estructurales que el modelo puede correlacionar con patrones de bugfix. [arxiv](https://arxiv.org/html/2507.00352v1)
+
+3. **Estilo WET local con DRY global en el grafo**  
+   - En el AST local (dentro de un pod) se permite duplicación controlada (WET) para que cada función tenga contexto suficiente para ser entendida sin saltos; el grafo se usa para deduplicar semánticamente a nivel global (detectar patrones equivalentes, proponer refactors). [mikelev](https://mikelev.in/futureproof/dry-vs-wet/)
+   - El agente puede ejecutar tareas de “global refactor” operando sobre el grafo (unificando nodos con comportamiento similar) mientras mantiene las vistas textuales limpias. [arxiv](https://arxiv.org/html/2503.09089v2)
+
+### 5.3. Comentarios/Metadatos (Nuevo Formato de Docstrings)
+
+1. **Docstrings estructuradas tipo JSON/tabla, no prosa**  
+   - Cada función, tipo o endpoint lleva un docstring estructurado, parseable en AST, por ejemplo:  
+     ```json
+     {
+       "role": "command_handler",
+       "inputs": {"user_id": "UUID", "payload": "Json<OrderUpdate>"},
+       "outputs": {"status": "enum[OK,ERROR]", "error_code": "string?"},
+       "side_effects": ["write:db.orders", "publish:kafka.order_updated"],
+       "invariants": ["order.total >= 0", "items.length > 0"],
+       "latency_budget_ms": 200
+     }
+     ```  
+   - Este blob vive tanto en el AST como en el nodo de grafo, y se puede indexar directamente; el LLM no necesita “leer explicación” sino consumir campos semánticos. [arxiv](https://arxiv.org/html/2507.00352v1)
+
+2. **Metadatos de uso del agente**  
+   - Añadir campos específicos para coordinación de agentes, p.ej.:  
+     - `preferred_tools`: comandos auxiliares esperados (bash, db, http).  
+     - `test_handles`: IDs de tests que cubren esta unidad.  
+     - `safety_level`: normal/privileged/critical.  
+   - Estos campos permiten que el orquestador seleccione herramientas, valide cambios y priorice revisiones sin depender de convenciones implícitas. [verdent](https://www.verdent.ai/es/blog/swe-bench-verified-technical-report)
+
+3. **Comentarios libres relegados a vistas humanas**  
+   - El texto narrativo (rationale, discusiones de diseño) se guarda en `/views/docs/` y se referencia desde nodos de grafo, no dentro del AST principal. [dev](https://dev.to/eabait/beyond-code-generation-llms-for-code-understanding-3ldn)
+   - El agente puede leerlos si se le pide justificar cambios para humanos, pero no se cargan por defecto en las tareas de modificación.  
+
+### 5.4. Manejo de Contexto (Evitar que el Agente se Pierda)
+
+1. **Pipeline de tarea para ioDesk**  
+   1) Dado un issue o ticket, ioDesk consulta el grafo para localizar el pod y nodos candidatos relevantes (basado en relaciones y centralidad). [linkedin](https://www.linkedin.com/posts/anthony-alcaraz-b80763155_agentic-graph-systems-for-coding-a-convergence-activity-7307418466070708225-Ch65)
+   2) Construye un bundle de contexto con: AST serializado del subgrafo relevante, docstrings estructuradas y tests asociados; opcionalmente añade un resumen textual de alto nivel. [linkedin](https://www.linkedin.com/posts/fejes713_little-friendly-tip-on-working-with-llms-activity-7297934979257307138-dExD)
+   3) El LLM produce un plan y una lista de operaciones de alto nivel sobre el AST (por ejemplo, en JSON schema acordado, tipo Aider/aiCoder). [github](https://github.com/Aider-AI/aider/issues/3206)
+   4) Un motor sintáctico aplica las operaciones al AST, regenera las vistas textuales y ejecuta tests; los resultados se retroalimentan al agente. [verdent](https://www.verdent.ai/es/blog/swe-bench-verified-technical-report)
+
+2. **Ventanas de contexto escalonadas**  
+   - Nivel 1: bundle compacto (AST+metadatos) que cabe de sobra en la ventana -> razonamiento intensivo. [arxiv](https://arxiv.org/abs/2602.06671)
+   - Nivel 2: on-demand, el agente puede solicitar vistas textuales completas de nodos específicos si necesita revisar nombres o estilo. [addyosmani](https://addyosmani.com/blog/ai-coding-workflow/)
+   - Nivel 3: vistas globales (mapa de arquitectura, documentación) sólo se cargan si la tarea es de rediseño macro, no para bugfix local. [arxiv](https://arxiv.org/html/2504.04553v2)
+
+3. **Control de tokens y límites**  
+   - Con límites tipo SWE-bench Verified (2M tokens r/w, 20M cached reads), el diseño busca minimizar reenvío de contexto; los bundles son regenerados sólo cuando cambian subgrafos relevantes. [epoch](https://epoch.ai/benchmarks/swe-bench-verified)
+   - El grafo actúa como índice para evitar leer “medio repo” en cada turno. [arxiv](https://arxiv.org/html/2503.09089v2)
+
+***
+
+## 6. CONTRADICCIONES Y DEBATES SOTA
+
+- **AST vs texto crudo como representación principal**  
+  - Posición A (pro-AST): artículos como “How Abstract Syntax Trees Unlock LLM’s Code Understanding”, AST(NIT) y trabajos de AST-guided code synthesis muestran que estructurar el programa como árbol mejora precisión y reduce longitud de entrada sin perder calidad en tareas de resumen o síntesis especializada. [medium](https://medium.com/@nishandanilka/how-abstract-syntax-trees-unlock-llms-code-understanding-5fa88877123a)
+  - Posición B (pro-texto): debates en foros de programación argumentan que los LLMs actuales han sido entrenados mayoritariamente sobre texto fuente, no sobre AST, y que intentar operar directamente sobre AST puede ser menos efectivo que simplemente reescribir el código entero, dada la abundancia de ejemplos textuales. [reddit](https://www.reddit.com/r/programming/comments/1iqzcf6/getting_llms_to_more_reliably_modify_code_lets/)
+  - Evidencia actual: sólida a favor de AST para tareas de resumen/transformación acotada; insuficiente aún para afirmar que AST puro supere texto en benchmarks tipo SWE-bench a gran escala. Confianza: Media. [paul-harvey](https://paul-harvey.org/publication/2026-llm-ast-code-summary/)
+
+- **WET explícito vs DRY clásico**  
+  - Posición A (WET explícito pro-LLM): artículos y testimonios proponen pipelines muy explícitos, cercanos a celdas de Jupyter, donde cada paso está totalmente escrito y configurable; esto favorece a LLMs que se benefician de contextos autocontenidos y menos saltos. [mikelev](https://mikelev.in/futureproof/dry-vs-wet/)
+  - Posición B (DRY pro-humano): prácticas tradicionales y parte de la comunidad insisten en DRY como base de buen diseño, reportando que con prompts adecuados los modelos pueden producir código tan DRY como un buen humano. [linkedin](https://www.linkedin.com/posts/geoffhendrey_how-good-programmers-write-code-dry-dont-activity-7414782850778030082-BPnB)
+  - Evidencia: eminentemente anecdótica, sin benchmark cuantitativo específico; mi diseño opta por WET local + DRY global vía grafo, como compromiso orientado al LLM. Confianza: Baja–Media. [mikelev](https://mikelev.in/futureproof/dry-vs-wet/)
+
+- **Lenguajes nuevos AI-first vs adaptar lenguajes existentes**  
+  - Posición A (lenguajes nuevos): propuestas como A y análisis sobre “LLM-first languages” afirman que una nueva generación de lenguajes con gramáticas simplificadas y features AI-native es inevitable para explotar plenamente el potencial de los modelos. [linkedin](https://www.linkedin.com/posts/tylerdanielson_what-if-ai-had-its-own-programming-language-activity-7426772625848299520-bAfG)
+  - Posición B (evolución incremental): frameworks de agentes y artículos industriales muestran que gran parte del valor ya se obtiene con lenguajes existentes + mejores herramientas, scaffolding y representación (grafo/AST) sin necesidad de romper ecosistemas maduros. [github](https://github.com/IBM/llm-agent-framework)
+  - Evidencia: aún emergente; la dirección de viaje apunta a más estructura y restricciones, pero no está claro si será vía lenguajes nuevos o subsets estrictos de lenguajes actuales. Confianza: Media.  
+
+- **Vacíos claros de evidencia**  
+  - No hay, a día de hoy, un estudio tipo SWE-bench+ que compare directamente:  
+    - repos “clásicos” vs repos AST+grafo AI-native,  
+    - estilos DRY vs WET,  
+    - documentación narrativa vs estructurada,  
+    manteniendo idénticos modelo y scaffolding. [openreview](https://openreview.net/forum?id=R40rS2afQ3)
+  - Estas lagunas implican que el blueprint propuesto es una extrapolación razonada a partir de piezas de evidencia (AST, grafos, herramientas de merge, prácticas de empaquetado de contexto), no un estándar ya validado en producción a gran escala. Confianza sobre la *dirección* (más estructura, menos prosa, más grafos): Alta; sobre detalles concretos (por ejemplo campos exactos de los metadatos): Media–Baja. [arxiv](https://arxiv.org/abs/2602.06671)
+
+***
+
+## 7. FUENTES CITADAS (The Receipts)
+
+- SWE-bench, SWE-bench Verified y análisis de scaffolding, contexto y límites de tokens:  
+  - SWE-bench original. [arxiv](https://arxiv.org/html/2310.06770v3)
+  - SWE-bench Verified (Epoch AI). [epochai.substack](https://epochai.substack.com/p/what-skills-does-swe-bench-verified-evaluate)
+  - SWE-bench+: análisis de problemas de leakage y tests débiles. [openreview](https://openreview.net/forum?id=R40rS2afQ3)
+  - Informe técnico Verdent sobre rendimiento en SWE-bench Verified. [verdent](https://www.verdent.ai/es/blog/swe-bench-verified-technical-report)
+
+- ASTs, serialización y enfoques AST-guided  
+  - “Code vs Serialized AST Inputs for LLM-Based Code Summarization (AST(NIT))”. [paul-harvey](https://paul-harvey.org/publication/2026-llm-ast-code-summary/2026-llm-ast-code-summary.pdf)
+  - “How Abstract Syntax Trees Unlock LLM’s Code Understanding”. [medium](https://medium.com/@nishandanilka/how-abstract-syntax-trees-unlock-llms-code-understanding-5fa88877123a)
+  - Curso “Understanding AST agentic coding”. [linkedin](https://www.linkedin.com/learning/exploring-deterministic-llm-programming/understanding-ast-agentic-coding)
+  - “An AST-guided LLM Approach for SVRF Code Synthesis”. [arxiv](https://arxiv.org/html/2507.00352v1)
+  - Discusión sobre AST operations para Aider (AST-T5, StructCoder). [github](https://github.com/Aider-AI/aider/issues/3206)
+
+- Grafos de código y agentes guiados por grafos  
+  - LocAgent: Graph-Guided LLM Agents for Code Localization. [linkedin](https://www.linkedin.com/posts/anthony-alcaraz-b80763155_agentic-graph-systems-for-coding-a-convergence-activity-7307418466070708225-Ch65)
+
+- Herramientas de merge sintáctico y edición AI-aware  
+  - aiCoder: herramienta AST-based para fusionar snippets de LLM en proyectos existentes. [community.openai](https://community.openai.com/t/new-methodology-for-editing-existing-code-files-using-llm-generated-snippets/1108578)
+
+- Empaquetado de contexto para LLMs (codebase → prompt)  
+  - llm_ctx: utility para formatear codebase como contexto estructurado. [github](https://github.com/kennyfrc/llm_ctx)
+  - code2prompt. [facebook](https://www.facebook.com/0xSojalSec/posts/turn-your-codebase-into-smart-llm-prompts-/1287176666270067/)
+  - Repo Prompt: empaquetar repos en un único archivo con árbol y mapa de código. [linkedin](https://www.linkedin.com/posts/fejes713_little-friendly-tip-on-working-with-llms-activity-7297934979257307138-dExD)
+
+- Lenguajes y estilos AI-first  
+  - “A – AI-Native Programming Language”. [ointel](https://ointel.org/a-language)
+  - “Programming’s New Frontier: The Rise of LLM-First Languages”. [osada](https://osada.blog/posts/languages-designed-for-llms/)
+  - Discusión sobre lenguaje AI-native con tokens semánticos. [linkedin](https://www.linkedin.com/posts/tylerdanielson_what-if-ai-had-its-own-programming-language-activity-7426772625848299520-bAfG)
+  - IBM: “What Code LLMs Mean for the Future of Software Development”. [ibm](https://www.ibm.com/think/insights/code-llm)
+
+- Sistemas de comprensión de codebase Human–AI y documentación estructurada  
+  - “Understanding Codebase like a Professional! Human–AI Codebase Understanding System”. [arxiv](https://arxiv.org/html/2504.04553v2)
+  - “Beyond Code Generation: LLMs for Code Understanding”. [dev](https://dev.to/eabait/beyond-code-generation-llms-for-code-understanding-3ldn)
+
+- DRY vs WET en contexto de LLMs  
+  - Debate sobre LLMs que escriben código WET y dependencia en entidad que lee el código. [linkedin](https://www.linkedin.com/posts/geoffhendrey_how-good-programmers-write-code-dry-dont-activity-7414782850778030082-BPnB)
+  - “DRY vs WET: Ditching DRY for Explicit, Customizable Pipelines”. [mikelev](https://mikelev.in/futureproof/dry-vs-wet/)
+
+- Frameworks y ecosistema de agentes LLM  
+  - IBM LLM Agent Framework. [github](https://github.com/IBM/llm-agent-framework)
+  - Listas de frameworks de agentes LLM. [github](https://github.com/kaushikb11/awesome-llm-agents)
+
+Este es el blueprint “AI-native” que, con la evidencia disponible, maximiza la legibilidad estructural para agentes, minimiza ruido textual y reorganiza el repositorio alrededor de ASTs, grafos y metadatos explícitos.

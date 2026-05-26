@@ -1,0 +1,46 @@
+## 1. RESUMEN EJECUTIVO (BLUF)  
+La investigación indica que el código “AI-nativo” debe ser radicalmente distinto: monolítico, sin indentación ni espacios superfluos, con estructura AST/grafo en vez de jerarquías humanas y con metadatos formales (JSON/tipos) en lugar de docstrings narrativos. Este formato reduce ~25–30 % los tokens de entrada del LLM sin pérdida de calidad【40†L111-L114】【45†L57-L60】. El “por qué ahora” es que los LLM modernos pueden procesar contextos enormes y entienden ASTs con alta precisión, lo que hace viable desechar convenciones legibles para humanos sin degradar la performance del agente.
+
+## 2. EL PARADIGMA POST-HUMANO (Hallazgos Clave)  
+- **Dominio sintáctico por los LLM:** los grandes modelos ya generan ASTs con ~90 % de exactitud en tareas de análisis de código【32†L45-L53】.  
+- **Grafos de código contextuales:** convertir repositorios en grafos de conocimiento (KG) –incluyendo dependencias entre clases, funciones, variables, etc.– enriquece el contexto para el LLM【48†L13-L20】【46†L1-L4】. Por ejemplo, el modelo CGM integra estructuras de grafo en la atención del LLM logrando un 43.00 % de éxito en SWE-bench【46†L1-L4】.  
+- **AST serializado:** representaciones AST(NIT) utilizadas como entrada permiten mantener calidad de resumen con casi un 28.6 % menos de tokens que el código secuencial【40†L111-L114】.  
+- **Costo de legibilidad humana:** eliminar indentación, saltos de línea y espacios ahorra ~24.5 % de tokens de entrada sin afectar el desempeño del LLM【45†L57-L60】.  
+- **Modularidad vs. monolítica:** contrariamente a lo intuitivo, el código altamente modular (DRY) no mejoró la generación. Estudios recientes muestran que el código monolítico (singular) obtuvo consistentemente mejores resultados que el código modular【42†L376-L384】.
+
+## 3. LO QUE “SÍ” FUNCIONA PARA AGENTES (Con Evidencia)  
+- **AST serializado (AST-NIT)** → reduce la secuencia de entrada en ~28% (entrena más rápido) manteniendo la misma calidad de salida【40†L111-L114】.  
+- **Uso de grafos de conocimiento (KG)** → codifica dependencias y relaciones explícitas, lo que optimiza la búsqueda de contexto (CGM+LLM supera métodos previos, 43% en SWE-bench【46†L1-L4】).  
+- **Formato condensado (sin indentación/espacios)** → elimina tokens redundantes (~24.5% menos) sin pérdida de precisión【45†L57-L60】.  
+- **Código WET/monolítico** (duplicar lógica en lugar de abstraer DRY) → mantiene toda la lógica en una unidad continua, facilitando que el LLM procese el flujo completo del programa【42†L376-L384】.  
+- **Fragmentar por AST (chunking)** → cada fragmento contiene funciones o clases completas (evita partir el código en medio de un bloque semántico), lo cual preserva el significado de cada unidad【49†L140-L148】【26†L147-L155】.  
+- **Comentarios estructurados (JSON/esquemas)** → describir funciones con metadatos formales (argumentos, tipos, condiciones) en vez de texto libre añade semántica clara y evita ambigüedades que provocan alucinaciones【50†L49-L56】.
+
+## 4. LO QUE “NO” FUNCIONA (La trampa del código humano)  
+- **DRY excesivo (modularidad tradicional)** → Fragmenta la lógica en múltiples capas/archivos, obligando al agente a recomponer contexto. Estudios muestran peor desempeño en código muy modular【42†L376-L384】.  
+- **Indentación y espaciado legible** → Añaden ~25 % de tokens inútiles (formatos de legibilidad humana) sin aportar contenido semántico, drenando el presupuesto del LLM【45†L57-L60】.  
+- **Comentarios narrativos en lenguaje libre** → Generan ruido y tokens de más sin formato estructurado; confunden la atención del LLM (mejor evitarlos o sustituirlos por metadatos formales)【50†L49-L56】.  
+- **División de código arbitraria** (p.ej. splitting por línea/texto) → Parte funciones y clases en trozos incoherentes. Un RAG chatbot no puede entender funciones cortadas【49†L140-L148】. Cada unidad del código debe ser semánticamente completa.
+
+## 5. LA SÍNTESIS ARQUITECTÓNICA (El Blueprint para ioDesk)  
+Basado en evidencias, las reglas para un repositorio “AI-Native” son:  
+1. **Estructura de Archivos:** mantener tan pocos archivos como el contexto lo permita (idealmente uno monolítico o pocos archivos autocontenidos). Evitar carpetas anidadas y referencias circulares. Agrupar funciones relacionadas secuencialmente para que todo el flujo esté en una sola unidad【42†L376-L384】.  
+2. **Sintaxis y Tipado:** usar código compactado (eliminar indentación y saltos) para minimizar tokens【45†L57-L60】. Usar nombres de variables y funciones breves pero únicos. Incluir anotaciones de tipo estático explícitas en cada firma (parámetros y retorno) para quitar ambigüedad; por ejemplo, `def f(a:int,b:int)->int: return a+b`. Los patrones de diseño complejos o sintaxis redundante deben evitarse.  
+3. **Comentarios/Metadatos:** sustituir docstrings narrativos por estructuras formales (JSON/YAML) que definan esquema de entrada/salida y condiciones. Ejemplo: `# {"args":[{"a":"int"},{"b":"int"}],"returns":"int"}` en la cabecera de funciones. Incluir invariantes o pre/postcondiciones formales en código (p.ej. aserciones) en lugar de explicaciones en texto. Las schemas explícitas previenen alucinaciones【50†L49-L56】.  
+4. **Manejo de Contexto:** fragmentar el código siguiendo la AST: cada bloque enviado al agente debe contener definiciones enteras (funciones completas)【49†L140-L148】. Evitar dependencias implícitas cruzadas; si se requieren varios archivos, proveer un archivo índice o manifiesto con relaciones claras. Etiquetar secciones con delimitadores explícitos (por ejemplo, comentarios especiales) puede ayudar al LLM a distinguir unidades. En suma, cada consulta debe incluir todo el contexto relevante de una sola pasada (RAG atómico basado en AST).
+
+## 6. CONTRADICCIONES Y DEBATES SOTA  
+- **Código modular (DRY) vs Monolítico (WET)** — La práctica DRY tradicional frente a duplicar lógica. Evidencia reciente (Kang et al., 2024) muestra que el código monolítico supera consistentemente al modular en generación de código【42†L376-L384】.  
+- **Formateo legible vs código condensado** — Convenciones de estilo humano (indentación, líneas) contra eficiencia en tokens. El estudio *“Hidden Cost”* (Pan et al., 2025) reporta que quitar la indentación ahorra ~25% tokens sin empeorar el rendimiento【45†L57-L60】.  
+- **Comentarios textuales vs Metadatos estructurados** — Comentarios narrativos tradicionales vs esquemas JSON/tipos. Prácticas convencionales chocan con guías recientes (Fern, 2026) que recomiendan documentación en esquemas completos (JSON/YAML), pues los tipos explícitos en los esquemas evitan alucinaciones【50†L49-L56】.  
+- **Código secuencial vs AST serializado** — Ingresar código como texto vs como AST. La investigación muestra que el LLM procesando un AST serializado usa ~28.6% menos tokens con calidad equivalente【40†L111-L114】, cuestionando la primacía de la entrada puramente textual.
+
+## 7. FUENTES CITADAS (The Receipts)  
+- arXiv:2602.06671 (“Code vs Serialized AST Inputs for LLM-Based Code Summarization”)【40†L111-L114】  
+- arXiv:2305.12138 (“LLMs: Understanding Code Syntax and Semantics for Code Analysis”)【32†L45-L53】  
+- arXiv:2407.11406 (“Revisiting the Impact of Pursuing Modularity for Code Generation”)【42†L376-L384】  
+- arXiv:2505.14394 (“Knowledge Graph Based Repository-Level Code Generation”)【48†L13-L20】  
+- arXiv:2505.16901 (“Code Graph Model (CGM) for Repository-Level Tasks”)【46†L1-L4】  
+- arXiv:2508.13666 (“The Hidden Cost of Readability: How Code Formatting Consumes LLM Budget”)【45†L57-L60】  
+- “Building Knowledge Graph over a Codebase for LLM” (Medium, Zimin Chen)【49†L140-L148】  
+- “How to Write LLM-Friendly Documentation” (blog, Nathan Lian)【50†L49-L56】

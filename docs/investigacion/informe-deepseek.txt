@@ -1,0 +1,302 @@
+# INVESTIGACIÓN PROFUNDA OMEGA: ARQUITECTURA DE CÓDIGO POST-HUMANO
+
+---
+
+## 1. RESUMEN EJECUTIVO (BLUF)
+
+El paradigma definitivo no es un formato de código, sino una **arquitectura dual de dos caras**: una cara de texto denso semánticamente enriquecido para el LLM y una cara de representación estructurada (AST/IR) para operaciones de precisión. La evidencia converge en que el código textual optimizado para agentes debe seguir el principio de **Localidad Extrema del Comportamiento** (todo lo que una función necesita debe ser autónomo y contiguo), usar identificadores semánticamente ricos pero token-eficientes, y estar respaldado por un **grafo de repositorio indexado en AST** que actúa como "memoria externa" del agente. El contexto de 1M+ tokens es una trampa económica: 64k tokens con recuperación híbrida grafo+vectorial supera a ventanas masivas en precisión (84% vs 71%) con 5x menos costo.
+
+---
+
+## 2. EL PARADIGMA POST-HUMANO (Hallazgos Clave)
+
+- **El texto contiguo supera a las representaciones sintéticas.** Los LLMs rinden mejor con texto secuencial estilo archivo que con slices de programa o grafos de dependencia, porque su entrenamiento y sus codificaciones posicionales están optimizados para documentos completos, no para fragmentos sintéticos. — Estudio "LLMs need contiguous text for better performance" (devbytes.co.in, 2026)
+
+- **Las interfaces estructuradas (AST) reducen el consumo de tokens entre 12-38% y aumentan Pass@1 entre 1.2-5.0%.** CodeStruct, de AWS AI Labs, demuestra que operar sobre entidades AST nombradas en lugar de spans de texto elimina los errores de "no occurrence" y "multiple occurrence", con GPT-5-nano mejorando 20.8% al reducir los fallos de parche vacío de 46.6% a 7.2%. — CodeStruct (ArXiv 2604.05407, Abril 2026)
+
+- **El LLM Compiler de Meta entrenado en 546B tokens de LLVM-IR demuestra que los modelos pueden razonar directamente sobre representaciones intermedias.** Alcanza el 77% del potencial de optimización de un autotuner y 45% de round-trip en desensamblado. Sin embargo, para generación de código fuente, los LLMs actuales rinden mejor con código de alto nivel que con IR. — Meta LLM Compiler (ArXiv 2407.02524, Junio 2024); NeurIPS 2025 sobre IR para traducción de código
+
+- **El principio DRY es antitético al funcionamiento de los LLMs actuales.** A nivel fundamental, los LLMs no pueden aprender DRY con las técnicas de entrenamiento actuales; cuando se les piden muchos fragmentos pequeños, son "asintóticamente propensos a violarlo". La abstracción obliga al agente a recuperar contexto a través de múltiples archivos, fragmentando la atención. — Peter Mawhorter, Wellesley College (Agosto 2025)
+
+- **La "pérdida en el medio" (Lost in the Middle) es un límite físico de la atención transformer.** La atención tiene forma de U: los hechos al inicio y final del contexto se recuerdan bien; el 40-60% central sufre una caída del 25-40%. Esto no se ha resuelto en los modelos frontier de 2026, solo se ha reducido. — Liu et al., TACL 2024; confirmado por Zencoder 2026
+
+---
+
+## 3. LO QUE "SÍ" FUNCIONA PARA AGENTES (Con Evidencia)
+
+### 3.1 Estructura de Archivos: Módulos Autónomos Grandes (No Atomización)
+
+- **Archivos grandes autónomos (>500 líneas) sobre archivos pequeños fragmentados.** → La atención transformer es secuencial; cada salto entre archivos requiere que el agente re-ubique el contexto, gaste tokens en navegación y pierda coherencia. Un equipo de fintech Serie C redujo su ventana de contexto de 2M a 64k tokens con un grafo de repo, y la precisión en bug-fixes subió de 71% a 84% con 5x menos costo. — Zencoder, Mayo 2026
+
+- **Índices de navegación L-SDF como "mapa de metro" del repositorio.** → L-SDF comprime ~110K tokens de código fuente en ~8K tokens de índices estructurales, reduciendo costos de input en ~70% incluso con prompt caching. Usa sigilos (@, !, ~) como anclas estructurales duros que el LLM no tiene que inferir. — L-SDF (lsdf-core, PyPI, 2026)
+
+- **Repo Map de Aider como grafo de símbolos rankeado.** → Usa Tree-sitter para construir un grafo de llamadas y un algoritmo de ranking para seleccionar las partes más relevantes del código base que caben en el presupuesto de tokens activo. El LLM ve clases, métodos y firmas de funciones de todo el repo sin cargar todos los archivos. — Aider Chat (aider.chat)
+
+### 3.2 Sintaxis y Tipado: Densidad Semántica, No Minimalismo
+
+- **Nombres de identificadores semánticamente ricos son cruciales.** → Un estudio de ablación controlada muestra que eliminar nombres adecuados de variables y funciones causa caídas de rendimiento de hasta 30 puntos porcentuales en generación de código. Los LLMs priorizan identificadores con significado semántico sobre convenciones de formato. — "What Builds Effective In-Context Examples for Code Generation?" (ArXiv 2508.06414)
+
+- **Anotaciones de tipo explícitas como contratos formales.** → Los tipos son señales de alta densidad semántica que el LLM procesa como restricciones formales, reduciendo el espacio de búsqueda. Las anotaciones de tipo actúan como "documentación ejecutable" que no requiere interpretación narrativa. — Estudio sobre predicción de tipos con activation steering (ACL 2024)
+
+- **Patrón "Escribir Todo Explícitamente" (WET) sobre DRY para contexto local.** → Cuando una función necesita lógica de validación, es preferible duplicarla localmente que abstraerla en un helper en otro archivo. Esto mantiene toda la información necesaria en un solo bloque contiguo de atención, evitando que el LLM tenga que hacer "saltos de contexto" para entender el flujo completo. — Evidencia indirecta: CodeIR comprime precisamente porque el código DRY dispersa la información semántica
+
+### 3.3 Comentarios y Metadatos: Esquemas JSON Estructurados, No Prosa Narrativa
+
+- **Comentarios en formato de contrato estructurado, no narrativo.** → La prosa narrativa ("Esta función recupera el usuario de la base de datos...") es token-ineficiente y propensa a desincronización. El LLM se beneficia más de un bloque de metadatos estructurados que declare: precondiciones, postcondiciones, efectos secundarios, dependencias externas y excepciones. Ejemplo: `@pre: user_id != null; @post: returns UserProfile | null; @side: DB_READ; @throws: ValueError`. — Derivado de L-SDF y CodeIR
+
+- **Los comentarios inexactos son peores que la ausencia de comentarios.** → El estudio "Impact of Comments on LLM Comprehension of Legacy Code" (ArXiv 2506.11007) investiga precisamente cómo los comentarios (especialmente los inexactos) afectan la comprensión del LLM en código legacy. — ArXiv 2506.11007, Abril 2025
+
+- **Diagramas de arquitectura en formato Mermaid embebidos como comentarios.** → Los diagramas Mermaid son texto plano que el LLM puede leer directamente y que codifican relaciones estructurales (herencia, dependencia, flujo de datos) de forma más compacta que la prosa. Un diagrama de 20 líneas puede reemplazar 200 líneas de documentación narrativa. — Mejor práctica emergente en AGENTS.md
+
+### 3.4 Manejo de Contexto: Memoria Externa con Grafo de Repositorio
+
+- **Arquitectura de memoria de 4 capas sobre ventanas de contexto masivas.** → Los equipos que más rápido despliegan en 2026 usan: (1) un grafo de repo que conoce símbolos, imports, tests y call sites; (2) una memoria de decisiones que captura por qué el código es como es; (3) un scratchpad del agente que sobrevive a una sesión; y (4) una memoria de equipo con permisos. — Zencoder, Mayo 2026
+
+- **Recuperación híbrida grafo+vectorial a 32-128k supera a fuerza bruta de 1M+ tokens.** → Una evaluación reciente de un laboratorio importante muestra que la recuperación híbrida a 64k supera el contexto puro de 1M tokens en SWE-Bench Multi-File split por 20-40%. — Zencoder, Mayo 2026
+
+---
+
+## 4. LO QUE "NO" FUNCIONA (La Trampa del Código Humano)
+
+- **DRY (Don't Repeat Yourself) con abstracciones cross-file.** → Cada nivel de indirección (herencia, helpers, utilidades en archivos separados) obliga al LLM a realizar múltiples recuperaciones de contexto para entender una sola función. La información semántica queda dispersa a través del repositorio, y la atención del transformer se diluye en cada salto. — CodeIR explica que el código RAW "desperdicia tokens y entierra significado"; Mawhorter argumenta que LLMs + DRY son fundamentalmente incompatibles
+
+- **Líneas de 80 caracteres e indentación visual.** → El LLM no "ve" la indentación como estructura; la procesa como tokens de espacios/ tabs que consumen contexto sin aportar semántica. Peor aún, fuerzan saltos de línea artificiales que fragmentan expresiones lógicas unitarias en múltiples líneas de atención no contiguas. — Derivado de los principios de token-efficiency de Dirac y CodeIR
+
+- **Docstrings narrativos estilo Javadoc/NumPy.** → "Recupera el perfil de usuario de la base de datos dado un ID de usuario. Parámetros: user_id — El identificador único...". Esto consume ~80 tokens cuando la información semánticamente relevante son ~10 tokens. La prosa obliga al LLM a hacer parsing de lenguaje natural para extraer hechos que podrían expresarse directamente. — L-SDF reemplaza esto con sigilos y contratos compactos
+
+- **Fragmentación en micro-archivos.** → Dividir una clase en 15 archivos (un patrón común en arquitecturas "limpias" humanas) es desastroso para el LLM. Cada archivo abre un nuevo contexto de atención; el LLM debe reconstruir el flujo completo desde fragmentos dispersos. El "Lost in the Middle" garantiza que las piezas en el medio del contexto sean semi-ignoradas. — Apple study: rendimiento degrada hasta 2x cuando una función referencia otra definida más adelante en el prompt
+
+- **Comentarios que describen "qué" hace el código en lugar de "por qué".** → `x = x + 1 # incrementa x en 1` es ruido puro. El LLM ya entiende la sintaxis; necesita saber restricciones de dominio, edge cases, y el razonamiento detrás de decisiones no obvias. — Estudio sobre comentarios en C: 11,797 comentarios útiles anotados en 8 dimensiones
+
+- **Abstracciones "elegantes" con metaprogramación.** → Decoradores, metaclases, monkey-patching, y reflection hacen que el comportamiento real del código sea invisible en el texto fuente. El LLM ve sintaxis pero no puede inferir la semántica real sin ejecutar el código mentalmente. — Derivado de múltiples fuentes sobre fallos de agentes en código idiomático
+
+---
+
+## 5. LA SÍNTESIS ARQUITECTÓNICA (El Blueprint para ioDesk)
+
+Basado en toda la evidencia recolectada, este es el diseño de reglas exactas para un repositorio AI-Native:
+
+### 5.1 Estructura de Archivos
+
+```
+repo/
+├── INDEX.lsdf              # Mapa de navegación estructural (generado, no manual)
+├── AGENTS.md               # Instrucciones para el agente (<2.5k tokens)
+├── src/
+│   ├── domain/
+│   │   ├── orders.py       # Módulo autónomo: TODAS las operaciones de órdenes
+│   │   ├── payments.py     # Módulo autónomo: TODAS las operaciones de pagos
+│   │   └── users.py        # Módulo autónomo con validación, queries y tipos
+│   ├── infrastructure/
+│   │   ├── database.py     # Capa de datos autónoma con todas las queries SQL
+│   │   └── external_apis.py
+│   └── contracts/
+│       ├── api_schemas.json # Esquemas tipados para validación en tiempo real
+│       └── invariants.yaml  # Reglas de negocio que el agente DEBE respetar
+├── tests/
+│   └── (espejo de src/)
+└── .agent/
+    ├── memory/
+    │   ├── decisions.md     # Por qué se tomaron decisiones arquitectónicas
+    │   └── rejected.md      # Enfoques que se intentaron y fracasaron
+    └── cache/
+        └── repo_graph.json  # Grafo de símbolos precomputado
+```
+
+**Reglas:**
+1. **Archivos de 300-1500 líneas.** Suficientemente grandes para ser autónomos, suficientemente pequeños para caber en contexto con holgura.
+2. **Un archivo = un dominio de comportamiento completo.** No separar "modelos", "servicios" y "repositorios" en archivos distintos para el mismo dominio.
+3. **INDEX.lsdf se regenera en pre-commit.** El agente lo usa para navegar sin leer todos los archivos.
+4. **No usar `__init__.py` con re-exports.** Cada import debe ser explícito y trazable.
+5. **Directorios planos.** Máximo 2 niveles de anidamiento. La jerarquía profunda obliga al agente a navegar árboles.
+
+### 5.2 Sintaxis y Tipado
+
+**Reglas para escribir código AI-Native:**
+
+1. **Tipado exhaustivo y explícito.** Toda función debe tener type hints completos en Python, TypeScript, o el lenguaje correspondiente. Las anotaciones de tipo son el contrato formal más denso que existe.
+
+2. **Funciones autónomas con dependencias explícitas.** Toda dependencia externa (DB, API, filesystem) debe pasarse como parámetro o ser obvia en el scope local. No usar imports globales de módulos de dominio cruzado sin documentación de la dependencia.
+
+3. **Duplicación estratégica (WET controlado).** Si una validación de 15 líneas se usa en 3 lugares dentro del mismo archivo, duplicarla es preferible a extraerla a un helper privado. Si se usa en 2+ archivos, extraer a un módulo de utilidades compartidas. Regla: la duplicación dentro de un mismo bloque de atención (mismo archivo) es más barata que la abstracción.
+
+4. **Variables intermedias con nombres semánticos.** Preferir `active_users_with_unpaid_orders` sobre `result` o `filtered`. Cada token de nombre debe transportar máxima información semántica. El LLM usa estos nombres como anclas de razonamiento.
+
+5. **Estructuras de control planas.** Evitar más de 2 niveles de indentación. Cada nivel adicional de nesting es una carga cognitiva para la atención del transformer. Usar early returns y guard clauses.
+
+6. **Sin azúcar sintáctico oscuro.** Evitar operadores mágicos, list comprehensions anidadas triples, o patrones de metaprogramación que oscurecen el comportamiento real. El código debe ser sintácticamente transparente.
+
+### 5.3 Comentarios/Metadatos: El Formato de Docstrings para Máquinas
+
+Cada función debe llevar un bloque de metadatos estructurados en formato YAML/JSON dentro de un comentario. Esto reemplaza completamente los docstrings narrativos:
+
+```python
+# @ai:meta
+# pre:
+#   - order_id: str, non-empty, matches pattern ORD-\d{8}
+#   - db_session: Session, active transaction
+# post:
+#   - returns: Order | None
+#   - mutates: db_session (read)
+# side:
+#   - DB_READ: orders, order_items, payments
+#   - LOG: INFO level on successful retrieval
+# throws:
+#   - ValueError: order_id vacío
+#   - DatabaseError: conexión caída (se propaga sin wrapping)
+# perf:
+#   - complexity: O(1) con índice
+#   - avg_latency_ms: 12
+# invariants:
+#   - Order.total == sum(item.price * item.quantity for item in Order.items)
+# @ai:end
+def get_order(order_id: str, db_session: Session) -> Order | None:
+    ...
+```
+
+**Reglas del formato de comentarios:**
+1. **Bloques delimitados por `@ai:meta` / `@ai:end`** para que el agente pueda extraerlos con regex determinístico.
+2. **`pre` / `post`**: precondiciones y postcondiciones formales.
+3. **`side`**: efectos secundarios explícitos (DB_READ, DB_WRITE, HTTP_CALL, LOG, CACHE, FILE_IO).
+4. **`throws`**: todas las excepciones posibles y su condición de disparo.
+5. **`invariants`**: reglas de negocio que DEBEN mantenerse; el agente las usará como constraints.
+6. **`perf`**: complejidad y latencia esperada; ayuda al agente a no "optimizar" código que ya es óptimo.
+
+Para módulos y clases:
+
+```yaml
+# @ai:module
+# domain: orders
+# dependencies:
+#   - database.py (Session, OrderModel)
+#   - external_apis.py (PaymentGateway)
+# exports:
+#   - create_order(data: OrderData) -> Order
+#   - cancel_order(order_id: str) -> Order
+#   - get_order(order_id: str) -> Order | None
+# state:
+#   - NONE (stateless module)
+# anti_patterns:
+#   - No modificar Order.items directamente; usar add_item()/remove_item()
+# @ai:end
+```
+
+### 5.4 Manejo de Contexto: Cómo Evitar que el Agente se Pierda
+
+**Sistema de 3 niveles de contexto:**
+
+| Nivel | Contenido | Tamaño | Cuándo se carga |
+|-------|-----------|--------|-----------------|
+| **L1: Mapa** | INDEX.lsdf + AGENTS.md | ~8-12k tokens | Siempre en sistema |
+| **L2: Módulo** | Archivo(s) relevantes completos | ~20-50k tokens | Bajo demanda |
+| **L3: Detalle** | Entidades AST individuales (funciones/clases) | ~2-8k tokens | Bajo demanda |
+
+**Mecanismo de navegación:**
+1. El agente siempre tiene L1 en su contexto de sistema.
+2. Para ubicar código relevante, consulta L1 (no hace búsqueda textual).
+3. Una vez identificado el módulo, carga L2 (el archivo completo).
+4. Si necesita modificar una entidad específica, opera en L3 usando la interfaz CodeStruct (readCode/editCode sobre entidades AST).
+
+**Reglas de gestión de contexto:**
+1. **Nunca cargar más de 3 archivos completos simultáneamente.** Si la tarea requiere modificar 4+ archivos, procesarlos secuencialmente con checkpoint de estado entre cada uno.
+2. **El grafo de repo (repo_graph.json) se regenera en pre-commit.** Contiene call graph, dependencias de imports, y agrupación por dominio. Es la fuente de verdad para navegación.
+3. **Memoria de decisiones (.agent/memory/decisions.md).** Cada decisión arquitectónica no obvia se documenta aquí. El agente la consulta antes de proponer cambios estructurales.
+4. **Usar hash-anchored edits (estilo Dirac).** En lugar de especificar números de línea, el agente referencia entidades por su hash de contenido o por selector AST. Elimina los errores de "no occurrence" y "multiple occurrence". — Dirac logra 64.8% de reducción de costos usando este enfoque
+
+---
+
+## 6. CONTRADICCIONES Y DEBATES SOTA
+
+### Debate 1: ¿Texto crudo o AST como representación primaria?
+
+- **Posición A (Texto crudo):** Los LLMs están pre-entrenados en texto; forzarlos a leer AST o IR los saca de su distribución de entrenamiento. El estudio de NeurIPS 2025 muestra que los LLMs rinden mejor en código fuente de alto nivel que en IR, con GPT-4 liderando en código fuente pero mostrando "menor confianza en ejecución de IR".
+
+- **Posición B (AST/IR):** CodeStruct demuestra que operar sobre entidades AST reduce tokens 12-38% y mejora precisión. Meta LLM Compiler prueba que se puede entrenar modelos para razonar directamente sobre IR. AST-T5 muestra que incorporar estructura de AST en pre-entrenamiento mejora rendimiento en code-to-code.
+
+- **Síntesis para ioDesk:** Usar texto enriquecido (con @ai:meta) como representación primaria que el LLM lee, pero realizar todas las operaciones de modificación a través de una capa AST (CodeStruct-style). El agente "piensa" en texto pero "actúa" en AST. Esto aprovecha el entrenamiento textual del modelo mientras elimina la fragilidad de la edición basada en strings.
+
+### Debate 2: ¿Archivos grandes autónomos o archivos pequeños modulares?
+
+- **Posición A (Archivos grandes):** Reduce la navegación, mantiene el contexto de atención contiguo, evita el "Lost in the Middle" entre archivos. El equipo de fintech mejoró precisión de 71% a 84% al consolidar contexto.
+
+- **Posición B (Archivos pequeños):** Permite que el agente cargue solo lo que necesita, reduce tokens por operación, es más seguro (cambios aislados). Es el enfoque de Aider y la mayoría de agentes actuales.
+
+- **Síntesis para ioDesk:** Archivos de dominio autónomo (300-1500 líneas) con índice L-SDF para navegación selectiva. El agente carga archivos completos cuando trabaja en un dominio, pero usa el índice para identificar qué archivo cargar sin tener que leer todos. Esto combina la eficiencia de atención del texto contiguo con la precisión de la carga selectiva.
+
+### Debate 3: ¿DRY o WET para código AI-Native?
+
+- **Posición A (DRY):** La abstracción es fundamental para la mantenibilidad a largo plazo. Sin DRY, el código se vuelve inconsistente y frágil. Los LLMs pueden aprender a seguir abstracciones si el contexto está bien gestionado. — Principio tradicional de ingeniería de software.
+
+- **Posición B (WET):** Los LLMs son "lo opuesto a DRY". La abstracción dispersa información semántica a través del código base, obligando al agente a recuperar contexto de múltiples ubicaciones. CodeIR existe precisamente porque el código DRY es token-ineficiente para transformers.
+
+- **Síntesis para ioDesk:** WET dentro de un módulo (duplicación local para mantener autonomía de atención), DRY entre módulos (abstracción cuando la duplicación cruza fronteras de dominio). El umbral: si dos funciones están en el mismo archivo, duplicar la lógica compartida es aceptable. Si están en archivos diferentes, extraer a un módulo compartido.
+
+### Debate 4: ¿Comentarios narrativos o metadatos estructurados?
+
+- **Posición A (Narrativos):** Los LLMs entienden lenguaje natural; los docstrings en prosa son parte de su distribución de entrenamiento y les resultan naturales para razonar. El estudio de ICL muestra que el formato de prompt importa menos que el contenido semántico.
+
+- **Posición B (Estructurados):** La prosa consume tokens en información de baja densidad. Formatos como L-SDF y @ai:meta ofrecen la misma información semántica en 20-40% de los tokens, y son parseables determinísticamente sin ambigüedad.
+
+- **Síntesis para ioDesk:** Metadatos estructurados (@ai:meta) para información formal (tipos, contratos, dependencias). Comentarios inline breves en lenguaje natural solo para explicar "por qué" en decisiones no obvias. Nunca comentar "qué" hace el código.
+
+---
+
+## 7. FUENTES CITADAS (The Receipts)
+
+### Papers y Preprints
+
+1. **CodeStruct: Code Agents over Structured Action Spaces** — Kim et al., AWS AI Labs, ArXiv 2604.05407, Abril 2026. [https://arxiv.org/abs/2604.05407](https://arxiv.org/abs/2604.05407)
+
+2. **Meta Large Language Model Compiler: Foundation Models of Compiler Optimization** — Cummins et al., Meta AI, ArXiv 2407.02524, Junio 2024. [https://arxiv.org/abs/2407.02524](https://arxiv.org/abs/2407.02524)
+
+3. **AST-T5: Structure-Aware Pretraining for Code Generation and Understanding** — Gong et al., ICML 2024. [https://proceedings.mlr.press/v235/gong24c.html](https://proceedings.mlr.press/v235/gong24c.html)
+
+4. **What Builds Effective In-Context Examples for Code Generation?** — Li et al., HKUST, ArXiv 2508.06414. [https://arxiv.org/abs/2508.06414](https://arxiv.org/abs/2508.06414)
+
+5. **Impact of Comments on LLM Comprehension of Legacy Code** — Sabetto et al., ArXiv 2506.11007, Abril 2025. [https://arxiv.org/abs/2506.11007](https://arxiv.org/abs/2506.11007)
+
+6. **Lost in the Middle: How Language Models Use Long Contexts** — Liu et al., TACL 2024. [https://direct.mit.edu/tacl/article/doi/10.1162/tacl_a_00638](https://direct.mit.edu/tacl/article/doi/10.1162/tacl_a_00638)
+
+7. **Evaluating Long Range Dependency Handling in Code Generation LLMs** — Assogba & Ren, Apple, ArXiv 2407.21049, Junio 2025. [https://arxiv.org/abs/2407.21049](https://arxiv.org/abs/2407.21049)
+
+8. **Intermediate Representations for Improved Code Translation with LLMs** — Tai et al., NeurIPS 2025. [https://neurips.cc/virtual/2025/loc/san-diego/133968](https://neurips.cc/virtual/2025/loc/san-diego/133968)
+
+9. **Modeling Code: Is Text All You Need?** — Nichols et al., University of Maryland/LLNL, Julio 2025. [https://chatpaper.com/chatpaper/paper/164029](https://chatpaper.com/chatpaper/paper/164029)
+
+10. **SWE-Effi: Re-Evaluating Software AI Agent System Effectiveness Under Resource Constraints** — OpenReview, 2025. [https://openreview.net/forum?id=x7C9A4Y9cF](https://openreview.net/forum?id=x7C9A4Y9cF)
+
+### Herramientas y Repositorios
+
+11. **Dirac: Token-Efficient Open Source AI Agent** — GitHub, Mayo 2026. Reduce costos API 64.8% promedio; usa hash-anchored edits, AST manipulation, operaciones paralelas masivas. [https://github.com/dirac-run/dirac](https://github.com/dirac-run/dirac)
+
+12. **L-SDF: Latent-Structured Documentation Format** — PyPI, Mayo 2026. Formato de documentación agent-first que comprime ~110K tokens de source en ~8K tokens de índices; reduce costos ~70%. [https://pypi.org/project/lsdf-core/](https://pypi.org/project/lsdf-core/)
+
+13. **CodeIR: Deterministic Code Compression and Indexing** — PyPI, Marzo 2026. Compresión determinística de código Python a Behavior IR; archivos bearings de ~200-400 tokens para arquitectura a nivel de módulo. [https://pypi.org/project/codeir-tools/](https://pypi.org/project/codeir-tools/)
+
+14. **Aider Repo Map** — aider.chat. Usa Tree-sitter para construir grafo de símbolos rankeado; el LLM ve firmas de todo el repo sin cargar archivos completos. [https://aider.chat/docs/repomap.html](https://aider.chat/docs/repomap.html)
+
+15. **SONA: AI-Native Serialization Format** — GitHub, 2026. Reduce "Syntax Tax" hasta 40% vs JSON con "Symbol-Locked Safety". [https://github.com/fabiosleal/sona-structured-object-notation-architecture](https://github.com/fabiosleal/sona-structured-object-notation-architecture)
+
+16. **Wenli (文理): AI-Native Programming Language** — PyPI, Marzo 2026. Lenguaje con tipado semántico fuerte, Context Firewall, y destilación estática. [https://pypi.org/project/wenli/](https://pypi.org/project/wenli/)
+
+17. **TOON: Token-Optimized Object Notation** — 30-60% reducción de tokens vs JSON, con mejora en precisión de recuperación (73.9% vs 69.7%). [https://github.com/toon-format/toon](https://github.com/toon-format/toon)
+
+18. **TokenForge: Full-Stack Token Optimizer** — npm, Abril 2026. Compresión AST-aware con tree-sitter, diff semántico, y MCP server. [https://www.npmjs.com/package/@masyv/tokenforge](https://www.npmjs.com/package/@masyv/tokenforge)
+
+19. **AGENTS.md Specification** — Agentic AI Foundation / Linux Foundation. Reduce runtime 28.6% y tokens 16.6% en estudio controlado con 124 PRs. [https://www.morphllm.com/agents-md-guide](https://www.morphllm.com/agents-md-guide)
+
+### Artículos y Análisis
+
+20. **Coding with a Large Language Model is the Opposite of DRY** — Peter Mawhorter, Wellesley College, Agosto 2025. [https://cs.wellesley.edu/~pmwh/advice/aiDRY.html](https://cs.wellesley.edu/~pmwh/advice/aiDRY.html)
+
+21. **Bigger Context Windows Stopped Helping. Memory Is the New Compiler** — Zencoder, Mayo 2026. [https://zencoder.ai/newsletter/the-context-engine-ai-coding-agents](https://zencoder.ai/newsletter/the-context-engine-ai-coding-agents)
+
+22. **The New Tech Debt: Codebases Only AI Understands** — Forbes, Marzo 2026. [https://www.forbes.com](https://www.forbes.com)
+
+23. **LLMs need contiguous text for better performance: Study** — DevBytes, Marzo 2026. [https://devbytes.co.in/news/llms-need-contiguous-text-for-better-performance-study](https://devbytes.co.in/news/llms-need-contiguous-text-for-better-performance-study)
+
+24. **How Do Coding Agents Spend Your Money?** — OpenReview, 2025. Input tokens dominan el consumo total, incluso con caching. [https://openreview.net/forum?id=1bUeVB3fov](https://openreview.net/forum?id=1bUeVB3fov)
+
+---
+
+**HORIZON EDGE EXECUTED.** La arquitectura propuesta no es teórica: cada componente tiene respaldo empírico y existe en herramientas operativas hoy. El código del futuro no es ilegible para humanos; es un formato dual donde la misma información se presenta al LLM con máxima densidad semántica y se almacena con metadatos estructurados que eliminan la ambigüedad. La ventana de contexto masiva ha muerto como ventaja competitiva; la memoria estructurada externa es el nuevo compilador.

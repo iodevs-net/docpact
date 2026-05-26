@@ -1,0 +1,283 @@
+## 1. RESUMEN EJECUTIVO (BLUF)
+
+El formato óptimo para un repositorio “AI‑native” no es texto fuente humano, sino un grafo de ASTs tipados y versionados por hash, serializado en secuencias compactas y sin formato visual, sobre el que los LLM operan vía RAG estructural y no vía “abrir archivos”. [arxiv](https://arxiv.org/abs/2602.06671)
+Los experimentos muestran que eliminar formato humano reduce ≈25–35% de tokens de entrada sin degradar la precisión en tareas de completado, mientras que serializar ASTs mantiene calidad con secuencias más cortas y entrenamiento más rápido. [arxiv](https://arxiv.org/html/2602.06671v1)
+Los comentarios más efectivos no son docstrings narrativos, sino pasos lógicos en línea que actúan como “pivotes” entre lenguaje natural y código, mejorando Pass@k frente a CoT clásico en modelos de 3–7B parámetros. [aclanthology](https://aclanthology.org/2024.findings-acl.420.pdf)
+Las representaciones basadas en AST + grafos de flujo de datos y chunking estructural superan a texto plano y AST “a pelo” en recuperación y generación sobre grandes bases de código, mitigando “loss in the middle” de contextos largos. [vxrl.medium](https://vxrl.medium.com/enhancing-llm-code-generation-with-rag-and-ast-based-chunking-5b81902ae9fc)
+Conclusión práctica: un repositorio AI‑native para agentes debe ser un DAG de unidades semánticas (funciones / módulos) sin formato, con comentarios lógicos mínimos, tipado agresivo y acceso vía RAG estructural, no un árbol de archivos legibles por humanos. (Confianza global: Alta) [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+
+***
+
+## 2. EL PARADIGMA POST-HUMANO (Hallazgos Clave)
+
+- **Formato visual humano es coste, no señal:** eliminar indentación, espacios y saltos de línea reduce ≈24.5–34.9% de tokens de entrada en FIM sobre 4 lenguajes y 10 LLMs, con cambios de Pass@1 ≤4.2% y a menudo estadísticamente no significativos. (Confianza: Alta) [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+- **AST serializados son tan buenos como el código bruto pero más compactos:** AST(NIT) muestra que secuencias de AST enriquecidos reducen longitud de entrada y tiempo de entrenamiento manteniendo calidad de resumen frente a código Python plano con LLaMA‑3.1‑8B. (Confianza: Alta) [arxiv](https://arxiv.org/abs/2602.06671)
+- **Comentarios en línea como “lógica embebida” mejoran generación:** MANGO demuestra que usar comentarios como pasos lógicos aumenta Pass@10 en HumanEval y MBPP sobre StarCoder y WizardCoder (3–7B) y es más robusto que CoT textual estándar. (Confianza: Alta) [aclanthology](https://aclanthology.org/2024.findings-acl.420.pdf)
+- **Chunking estructural (AST/graph‑aware) supera chunking por ventana fija:** AST‑T5, cAST y enfoques de RAG estructural logran hasta ≈82% mejora relativa en precisión de recuperación y 2–4× mejora en ejecución correcta vs enfoques TreeSitter o chunking plano. (Confianza: Alta) [bytebell](https://bytebell.ai/blog/advance-code-chunking)
+- **Contextos largos lineales siguen fallando (“loss in the middle”):** múltiples trabajos muestran que los transformadores infra‑utilizan información en posiciones medias y en diálogos multi‑turno, con caídas de ≈39% en tareas multi‑turno y necesidad de entrenamiento específico (IN² / FilM‑7B) para mitigar el efecto. (Confianza: Alta) [huggingface](https://huggingface.co/papers?q=long-context+failure)
+- **DRY humano vs WET de LLM:** evidencias empíricas y análisis cualitativos muestran que los LLM tienden a “spammear” código repetido (WET), y que la repetición es ubicua al punto de requerir métodos específicos (DeRep) para eliminarla sin dañar calidad. (Confianza: Media) [linkedin](https://www.linkedin.com/posts/geoffhendrey_how-good-programmers-write-code-dry-dont-activity-7414782850778030082-BPnB)
+- **Lenguajes AI‑native reales ya se mueven a grafos binarios y prompts como primitiva:** Agentis almacena código como DAG binario direccionado por hash, sin archivos de texto, y considera “todo es un prompt”; introduce “cognitive budget” y branching evolutivo. (Confianza: Media) [news.ycombinator](https://news.ycombinator.com/item?id=47317010)
+- **Planificación CoT textual pura puede empeorar el código:** en MANGO, CoT reduce Pass@k significativamente (sobre todo en 3B), mientras que comentarios en línea lógicos aumentan rendimiento y tienen menor varianza entre prompts. (Confianza: Alta) [aclanthology](https://aclanthology.org/2024.findings-acl.420.pdf)
+
+***
+
+## 3. LO QUE “SÍ” FUNCIONA PARA AGENTES (Con Evidencia)
+
+- **Entrada sin formato humano (código minificado semánticamente equivalente)**  
+  → LLM procesa menos tokens, con prácticamente el mismo desempeño en FIM (reducciones de entrada ≈25.8% de media; en Java hasta 42%). [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+  → Optimiza el presupuesto de contexto y coste por token sin afectar Pass@1 de modelos SOTA como GPT‑4o, Claude y DeepSeek‑V3. [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+  → Fuente: “The Hidden Cost of Readability: How Code Formatting Silently Consumes Your LLM Budget”. (Confianza: Alta) [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+
+- **Secuencias AST serializadas con detalle léxico preservado**  
+  → El LLM ve explícitamente la estructura (nodos, hijos, tipos) más el léxico relevante, reduciendo ambigüedad respecto a texto plano y permitiendo atajos de atención por jerarquía en lugar de por columna visual. [arxiv](https://arxiv.org/html/2602.06671v1)
+  → AST(NIT) muestra longitud de entrada menor, entrenamiento más rápido y calidad de resumen comparable al usar AST serializados frente a código bruto. [arxiv](https://arxiv.org/abs/2602.06671)
+  → Fuente: “Code vs Serialized AST Inputs for LLM-Based Code Summarization: An Empirical Study”. (Confianza: Alta) [arxiv](https://arxiv.org/html/2602.06671v1)
+
+- **Chunking y RAG basados en AST y grafos (funciones/módulos como unidades atómicas)**  
+  → El modelo opera sobre unidades semánticas coherentes (funciones, bloques, clases) en vez de ventanas arbitrarias, reduciendo el riesgo de truncar dependencias críticas y el “loss in the middle”. [linkedin](https://www.linkedin.com/posts/vishnudhat_rag-for-llm-code-generation-using-ast-based-activity-7371094356365127680-pMqz)
+  → Estudios de AST‑based chunking y cAST reportan menos alucinaciones y mayor precisión de recuperación; HCGS y GraphCodeBERT con grafos de flujo de datos logran ≈82% mejora relativa de precisión de recuperación y mejoras claras frente a AST plano. [arxiv](https://arxiv.org/html/2506.15655v1)
+  → Fuente: trabajos sobre AST‑T5 / AST chunking y GraphCodeBERT / HCGS en RAG de código. (Confianza: Alta) [vxrl.medium](https://vxrl.medium.com/enhancing-llm-code-generation-with-rag-and-ast-based-chunking-5b81902ae9fc)
+
+- **Comentarios lógicos en línea como pivotes (MANGO / LCP)**  
+  → El LLM minimiza pérdida de información entre descripción y código porque cada comentario está alineado con el bloque adyacente, reduciendo la dificultad (cross‑entropy) frente a CoT‑pre/CoT‑post. [aclanthology](https://aclanthology.org/2024.findings-acl.420.pdf)
+  → MANGO incrementa Pass@10 en HumanEval y MBPP para modelos de 3–7B, y LCP muestra mayor media y menor desviación estándar que CoT sobre múltiples prompts, especialmente en modelos pequeños. [aclanthology](https://aclanthology.org/2024.findings-acl.420.pdf)
+  → Fuente: “Comments as Natural Logic Pivots: Improve Code Generation via Comment Perspective”. (Confianza: Alta) [aclanthology](https://aclanthology.org/2024.findings-acl.420.pdf)
+
+- **Representaciones de grafo (data‑flow, PDG, CPG) sobre AST plano**  
+  → El grafo de flujo de datos captura dependencias semánticas (quién define/usa qué) que correlacionan mejor con la estructura de atención que un AST puramente sintáctico. [bytebell](https://bytebell.ai/blog/advance-code-chunking)
+  → GraphCodeBERT y HCGS superan modelos basados sólo en AST en tareas de búsqueda y generación, y CodeGRAG muestra beneficios al combinar CFG + DFG para transferencia entre lenguajes. [bytebell](https://bytebell.ai/blog/advance-code-chunking)
+  → Fuente: survey y estudios recientes de RAG de código con grafos semánticos (AST‑T5, GraphCodeBERT, HCGS, CodeGRAG).  (Confianza: Alta) [arxiv](https://arxiv.org/html/2506.15655v1)
+
+- **Tipado fuerte y errores en compilación como “anclas” para el agente**  
+  → Tipos explícitos y chequeo en compilación reducen espacio de estados y permiten ciclos cortos de prueba/corrección: el agente puede depender del compilador como discriminador de validez. [reddit](https://www.reddit.com/r/ChatGPTCoding/comments/1ms3u0i/which_programming_languages_have_you_got_most/)
+  → Practicantes reportan mejor rendimiento de agentes en lenguajes con tipado fuerte (TypeScript, C, Rust, Go) frente a lenguajes dinámicos en proyectos grandes, en parte por reducción de errores de runtime difíciles de detectar por el agente. [akitaonrails](https://www.akitaonrails.com/en/2026/02/09/ai-agents-best-programming-language-for-llms/)
+  → Fuente: discusiones de “best language for AI agents” y experiencias en producción. (Confianza: Media) [reddit](https://www.reddit.com/r/ChatGPTCoding/comments/1ms3u0i/which_programming_languages_have_you_got_most/)
+
+- **Repositorios como DAG binario direccionado por hash (Agentis‑style)**  
+  → LLMs y agentes trabajan sobre identificadores de nodos y subgrafos, no sobre paths de archivos, evitando conflictos de merge y facilitando importación por hash. [news.ycombinator](https://news.ycombinator.com/item?id=47317010)
+  → Agentis demuestra viabilidad de un lenguaje AI‑native donde “todo es un prompt” y el repositorio es un grafo versionado, no un árbol de texto. [news.ycombinator](https://news.ycombinator.com/item?id=47317010)
+  → Fuente: anuncio de Agentis, lenguaje AI‑native con DAG binario y “cognitive budget”. (Confianza: Media) [news.ycombinator](https://news.ycombinator.com/item?id=47317010)
+
+***
+
+## 4. LO QUE “NO” FUNCIONA (La trampa del código humano)
+
+- **Pretty‑printing humano (indentación, espacios, saltos de línea) como señal primaria**  
+  → Práctica: aplicar guías de estilo visual pensadas para humanos (PEP8, Google Style) y asumir que ayudan al LLM.  
+  → Problema: los LLM ven secuencias lineales, no layout; experimento de Pan et al. muestra que formateo completo vs no formateado produce diferencias mínimas de Pass@1, mientras introduce ≈13–35% de tokens redundantes según lenguaje. [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+  → Además, eliminar sólo un tipo de formateo (p.ej. sólo espacios) puede degradar modelos sensibles como Gemini, sugiriendo que “semi‑formato” es peor que “sin formato”. [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+  → Fuente: estudio “The Hidden Cost of Readability…”. (Confianza: Alta) [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+
+- **CoT textual externo y planificación narrativa alrededor del código**  
+  → Práctica: forzar al modelo a producir largas cadenas de razonamiento en lenguaje natural (CoT) antes o después del código.  
+  → Problema: MANGO muestra que CoT reduce Pass@k frente a SFT simple en modelos de 3–7B, mientras que comentarios en línea mejoran la tasa de aciertos y son mucho más estables frente a variaciones de prompt. [aclanthology](https://aclanthology.org/2024.findings-acl.420.pdf)
+  → En paralelo, estudios de diálogos multi‑turno muestran caídas de ≈39% en tareas complejas, aumento de “unreliability” y fuerte “loss in the middle” al repartir información en turnos sucesivos. [linkedin](https://www.linkedin.com/posts/philipp-schmid-a6a2bb196_do-llms-struggle-in-long-multi-turn-conversations-activity-7329049107690381312-aRJL)
+  → Fuente: MANGO (comentarios vs CoT) y trabajos sobre degradación en diálogos multi‑turno. (Confianza: Alta) [linkedin](https://www.linkedin.com/posts/philipp-schmid-a6a2bb196_do-llms-struggle-in-long-multi-turn-conversations-activity-7329049107690381312-aRJL)
+
+- **DRY extremo y alta factorización en muchas capas/archivos**  
+  → Práctica: eliminar toda repetición, factorizar patrones en helpers compartidos profundos, dispersar la lógica en múltiples archivos para “limpieza” humana.  
+  → Problema: benchmarks como SWE‑Bench y estudios de Copilot muestran que los LLM rinden peor cuando la lógica relevante está muy distribuida, incluso si el código es formalmente más “limpio”; Copilot tiene menos utilidad cuando la lógica de negocio está repartida en muchos archivos. [ehudreiter](https://ehudreiter.com/2025/01/13/do-llm-coding-benchmarks-measure-real-world-utility/)
+  → Además, “loss in the middle” y límites de contexto implican que recuperar correctamente todas las piezas dispersas en un solo prompt es frágil; RAG estructural surge precisamente para evitar esto. [icml](https://icml.cc/virtual/2025/poster/43801)
+  → Fuente: análisis de SWE‑Bench(+), crítica a su “solution leakage” y estudio de utilidad real de Copilot. (Confianza: Media‑Alta) [openreview](https://openreview.net/pdf?id=R40rS2afQ3)
+
+- **Gigantescos archivos monolíticos como “solución” al contexto**  
+  → Práctica: pegar todo en uno o pocos archivos enormes para evitar DRY cruzado.  
+  → Problema: trabajos sobre long‑context muestran que los transformadores almacenan información pero fallan en explotarla cuando está en posiciones medias; incluso con modelos entrenados a long‑context, se observa pérdida significativa de rendimiento sin técnicas especiales (IN², long‑short alignment). [scribd](https://www.scribd.com/document/840565205/NeurIPS-2024-Make-Your-Llm-Fully-Utilize-the-Context-Paper-Conference)
+  → Esto convierte al archivo gigante en un “contexto muerto en el medio” para instrucciones locales.  
+  → Fuente: estudios de “lost‑in‑the‑middle” y long‑context alignment. (Confianza: Alta) [arxiv](https://arxiv.org/html/2404.16811v2)
+
+- **AST‑only pipelines que ignoran texto porque “los LLM entienden estructuras”**  
+  → Práctica: alimentar al LLM sólo AST o transformaciones simbólicas, asumiendo que abstraer texto mejorará robustez.  
+  → Problema: la mayoría del pre‑entrenamiento de modelos actuales es sobre código como TEXTO; discusiones técnicas señalan que hay muchos ejemplos de “buggy → fixed code” en texto pero muy pocos ejemplos de manipulación de AST, por lo que forzar AST puro puede desaprovechar la distribución de entrenamiento real. [reddit](https://www.reddit.com/r/programming/comments/1iqzcf6/getting_llms_to_more_reliably_modify_code_lets/)
+  → Trabajos como GraphCodeBERT muestran que añadir grafos de flujo de datos sobre tokens, no reemplazar texto por AST, es lo que mejora. [bytebell](https://bytebell.ai/blog/advance-code-chunking)
+  → Fuente: debate sobre AST vs texto y resultados de GraphCodeBERT / HCGS. (Confianza: Media) [reddit](https://www.reddit.com/r/programming/comments/1iqzcf6/getting_llms_to_more_reliably_modify_code_lets/)
+
+- **Lenguajes “AI‑oriented” que cambian gramática sin re‑entrenar modelos**  
+  → Práctica: definir nuevas gramáticas simplificadas (p.ej. Python sin ciertos tokens) esperando que modelos existentes se beneficien automáticamente.  
+  → Problema: el paper de formateo reseña una gramática Python “AI‑orientada” que elimina tokens de formato, pero requiere re‑entrenamiento para adaptarse; no hay evidencia de mejora inmediata aplicando sólo transformaciones sintácticas al input de modelos ya entrenados. [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+  → Fuente: revisión de gramática AI‑orientada en Pan et al. (Confianza: Media) [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+
+- **Reprimir toda repetición de código sin control**  
+  → Práctica: aplicar post‑procesos de de‑duplicación agresivos sobre código generado.  
+  → Problema: DeRep muestra que la repetición en salida de LLM tiene estructura; su método reduce repetición hasta ≈90% en métricas específicas manteniendo calidad, pero requiere un diseño cuidadoso; eliminar repetición “a martillazos” puede borrar patrones útiles que el modelo depende de repetir. [arxiv](https://arxiv.org/html/2504.12608v1)
+  → Fuente: “Demystifying Repetition in LLM-based Code Generation”. (Confianza: Media) [arxiv](https://arxiv.org/html/2504.12608v1)
+
+***
+
+## 5. LA SÍNTESIS ARQUITECTÓNICA (El Blueprint para ioDesk)
+
+### 5.1 Estructura de Archivos: del árbol de archivos al DAG semántico
+
+1. **Unidad básica = nodo semántico, no archivo**  
+   - Representar cada función, método, clase o componente como un nodo en un **DAG de código** con:
+     - AST normalizado (sin formato, nombres canonicalizados opcionalmente).  
+     - Grafo de flujo de datos y llamadas (DFG/PDG/CPG ligero). [arxiv](https://arxiv.org/html/2506.15655v1)
+     - Metadatos de tipado y contratos.  
+   - Cada nodo se direcciona por `hash = SHA256(serialización AST+DFG+meta)` al estilo Agentis, evitando conflictos de merge y permitiendo importación por hash. [news.ycombinator](https://news.ycombinator.com/item?id=47317010)
+   - Evidencia: Agentis (DAG binario), GraphCodeBERT/CodeGRAG (grafos multi‑relación sobre 1.3M archivos y 2B relaciones). (Confianza: Media‑Alta) [bytebell](https://bytebell.ai/blog/advance-code-chunking)
+
+2. **“Módulos de contexto” en lugar de archivos**  
+   - Agrupar nodos en **shards de contexto** de ≈1–2k tokens serializados, cada uno autocontenido para que un LLM pueda operar sobre él sin depender de más de 1–2 shards adicionales.  
+   - Construir shards con heurísticas AST‑aware tipo cAST/AST‑T5: mantener subárboles íntegros, mezclar funciones muy acopladas y evitar cortar loops/condicionales. [vxrl.medium](https://vxrl.medium.com/enhancing-llm-code-generation-with-rag-and-ast-based-chunking-5b81902ae9fc)
+   - Esto alinea la granularidad de recuperación con la ventana efectiva de atención, evitando tanto demasiados archivos minúsculos como monolitos inservibles. (Confianza: Alta)  
+
+3. **Índice estructural + memoria vectorial**  
+   - Mantener dos índices:
+     - Índice estructural: grafo de dependencias (llamadas, uso de tipos, DFG).  
+     - Índice semántico: embeddings de cada shard/nodo generados con modelos SFR‑Embedding‑Code / CodeXEmbed u otros embedders SOTA. [bytebell](https://bytebell.ai/blog/advance-code-chunking)
+   - Retrieval para agentes:
+     1. Buscar por embedding + BM25/SPLADE (híbrido denso/sparse). [bytebell](https://bytebell.ai/blog/advance-code-chunking)
+     2. Expandir por grafo (subgrafo de dependencias relevante).  
+     3. Pasar sólo ese subgrafo serializado al LLM.  
+   - Evidencia: RAR, EvoR, HCGS, híbridos denso‑sparse (BM25+SPLADE+ColBERT) muestran mejoras sustanciales en precisión y latencia en RAG de código. (Confianza: Alta) [bytebell](https://bytebell.ai/blog/advance-code-chunking)
+
+4. **Proyección a archivos humanos (opcional, fuera del camino del agente)**  
+   - Si humanos necesitan leer, se genera una **vista de proyección** que ordena nodos por namespace/módulo y aplica pretty‑printing al vuelo.  
+   - El repositorio fuente “de verdad” se mantiene siempre como DAG binario / JSON compacto, no como árbol de archivos.  
+   - Inspirado en la distinción “Layer 1: AI‑native format / Layer 2: Human projection” discutida en análisis de lenguajes para agentes. (Confianza: Media) [akitaonrails](https://www.akitaonrails.com/en/2026/02/09/ai-agents-best-programming-language-for-llms/)
+
+### 5.2 Sintaxis y Tipado: lenguaje compacto, fuertemente tipado y orientado a propiedades
+
+1. **Sintaxis compacta, sin formato opcional**  
+   - Reglas:
+     - Sin espacios redundantes; un único espacio donde el parser lo requiera.  
+     - Un statement por línea lógica, pero el LLM ve la versión **sin saltos** (minificada) en su canal de trabajo. [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+     - Identificadores cortos y estandarizados en el canal AI‑native, con un diccionario aparte que mapea a nombres “humanos” para proyección.  
+   - La minificación debe conservar AST idéntico; el paper de formateo demuestra cómo hacerlo con verificación de equivalencia de AST en cuatro lenguajes. (Confianza: Alta) [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+
+2. **Tipado fuerte + contratos explícitos como invariantes machine‑friendly**  
+   - Diseñar el lenguaje de ioDesk como un superset fuertemente tipado (similar a TypeScript/ReasonML) con:
+     - Tipos algebraicos, genéricos, refinements simples.  
+     - Anotaciones de pre/post‑condición e invariantes a nivel de función (`@pre`, `@post`, `@inv`) serializadas en forma lógica simple.  
+   - Esto:
+     - Reduce el espacio de búsqueda del LLM.  
+     - Permite loop agente↔compilador como discriminador, algo que practicantes subrayan como ventaja en TypeScript/C/Rust/Go. [reddit](https://www.reddit.com/r/ChatGPTCoding/comments/1ms3u0i/which_programming_languages_have_you_got_most/)
+     - Se integra bien con flujos de datos de GraphCodeBERT/PDG. [bytebell](https://bytebell.ai/blog/advance-code-chunking)
+   - Confianza: Media‑Alta.  
+
+3. **Primera clase para prompts y agentes, pero separados del core lógico**  
+   - Siguiendo Dana y Agentis, introducir tipos/keywords nativos para `agent`, `prompt`, `tool`, pero encapsulados para que la lógica de negocio siga siendo determinista. [linkedin](https://www.linkedin.com/posts/ctnguyen_dana-the-agent-native-evolution-of-ai-development-activity-7346422164004249601-55vk)
+   - Los nodos que contienen lógica de orquestación de agentes se representan igual que los demás en el DAG, pero marcados con metadatos especiales (`kind=agent`).  
+   - Confianza: Media.  
+
+### 5.3 Comentarios/Metadatos: el nuevo formato de docstrings para máquinas
+
+1. **Comentarios como pasos lógicos atómicos (MANGO‑style)**  
+   - Para cada bloque lógico (if/for/función), exigir un comentario **en línea o inmediatamente anterior** que:  
+     - Exprese una intención breve en lenguaje natural controlado.  
+     - Se refiera sólo a variables locales explícitas.  
+   - Ejemplo (canal AI‑native):  
+     - `//@step: sort orders by created_at ascending`  
+   - MANGO demuestra que este patrón reduce dificultad (loss) y aumenta Pass@k frente a CoT externo, especialmente en modelos pequeños. (Confianza: Alta) [aclanthology](https://aclanthology.org/2024.findings-acl.420.pdf)
+
+2. **Docstrings estructurados, no narrativa libre**  
+   - Estructura recomendada para funciones, serializada como JSON o esquema compacto:  
+     - `//@spec: {"role":"handler","inputs":{"user_id":"UUID"}, "outputs":{"status":"enum[OK,ERR]"}, "pre":["user_id != null"], "post":["status in [OK,ERR]"]}`  
+   - Ventajas:
+     - Fácil de parsear a AST adicional.  
+     - Directamente usable en verificación estática y property‑based testing.  
+   - Soporta visión de comentarios como “natural logic pivots”, pero elevando su estructura. (Confianza: Media‑Alta) [aclanthology](https://aclanthology.org/2024.findings-acl.420.pdf)
+
+3. **Metadatos de retrieval embebidos**  
+   - Para cada nodo, adjuntar tags y embeddings pre‑calculados:
+     - `//@tags: ["billing","stripe","webhook"]`  
+     - Esto facilita RAG híbrido lexical/denso sin análisis adicional en tiempo de consulta. [bytebell](https://bytebell.ai/blog/advance-code-chunking)
+   - Confianza: Media.  
+
+4. **Evitar comentarios decorativos y narrativos largos**  
+   - MANGO muestra que el beneficio viene de comentarios alineados con código, no de texto narrativo extenso; comentarios tipo “test the function” sin contenido se reducen drásticamente con contraste. [aclanthology](https://aclanthology.org/2024.findings-acl.420.pdf)
+   - Por tanto, imponer una política de longitud máxima y formato controlado.  
+   - Confianza: Alta.  
+
+### 5.4 Manejo de Contexto: cómo evitar que el agente se pierda
+
+1. **Pipeline de edición para agentes (operar siempre sobre shards + grafo)**  
+   - Dado un objetivo (issue / feature / bug):  
+     1. **Localización semántica:** usar embedding + BM25/SPLADE para encontrar shards relevantes. [bytebell](https://bytebell.ai/blog/advance-code-chunking)
+     2. **Expansión estructural:** cerrar sobre vecinos en el grafo (funciones llamadas, tipos usados, invariantes).  
+     3. **Construcción de prompt:** serializar sólo ese subgrafo en un formato AST+DFG+comentarios mínimos, manteniendo ≤4–8k tokens efectivos para evitar long‑context degradation. [huggingface](https://huggingface.co/papers?q=long-context+failure)
+     4. **Edición estructurada:** el agente propone parches a nivel de nodo/AST, no diffs de texto; un reconciliador aplica cambios en el DAG y re‑hashea nodos afectados. [news.ycombinator](https://news.ycombinator.com/item?id=47317010)
+
+2. **Estrategia DRY/WET “local WET, global DRY”**  
+   - Basado en observaciones de que los LLM tienden a WET y que la repetición local es manejable:
+     - Dentro de un shard, permitir cierta repetición explícita para que cada shard sea autosuficiente para la tarea del agente.  
+     - Entre shards, aplicar plantillas y generación automática para mantener consistencia (global DRY), pero sin crear cadenas profundas de dependencias humanas. [linkedin](https://www.linkedin.com/posts/geoffhendrey_how-good-programmers-write-code-dry-dont-activity-7414782850778030082-BPnB)
+   - Confianza: Media (principio derivado).  
+
+3. **Evitar diálogos multi‑turno para modificaciones complejas**  
+   - Para cambios sustanciales, recomponer la instrucción en un solo prompt con contexto consolidado, en vez de una serie larga de instrucciones fragmentadas, mitigando “loss‑in‑the‑middle” multi‑turno. [huggingface](https://huggingface.co/papers?q=long-context+failure)
+   - Estructurar la interacción como “plan file → apply plan on DAG” con re‑evaluación en nuevos prompts limpios.  
+   - Confianza: Alta.  
+
+4. **Feedback de compilador y tests integrado en el ciclo del agente**  
+   - El agente opera en modo “plan‑execute‑observe”:
+     - Genera patch estructurado.  
+     - Compila y ejecuta tests; los errores/trace se añaden como contexto adicional de alto valor en el siguiente paso. [ehudreiter](https://ehudreiter.com/2025/01/13/do-llm-coding-benchmarks-measure-real-world-utility/)
+   - Estudios de Copilot muestran que su utilidad es mayor en tareas repetitivas/boilerplate; para lógica compleja, el lazo con tests y compilador es crítico. [ehudreiter](https://ehudreiter.com/2025/01/13/do-llm-coding-benchmarks-measure-real-world-utility/)
+   - Confianza: Media‑Alta.  
+
+***
+
+## 6. CONTRADICCIONES Y DEBATES SOTA
+
+- **AST serializado vs código texto plano**  
+  - Posición A (pro‑AST): AST(NIT) y cAST muestran que secuencias AST reducen longitud de entrada, entrenamiento y mantienen calidad de tareas como resumen y RAG. [arxiv](https://arxiv.org/abs/2602.06671)
+  - Posición B (pro‑texto): la distribución de entrenamiento de los LLM actuales es mayoritariamente texto; discusiones técnicas advierten que hay pocos ejemplos de manipulación de AST comparados con “código → código”, por lo que imponer AST puro podría ir contra el sesgo de entrenamiento. [reddit](https://www.reddit.com/r/programming/comments/1iqzcf6/getting_llms_to_more_reliably_modify_code_lets/)
+  - Evidencia actual sugiere un término medio: **AST + texto léxico + grafos de datos**, no AST vs texto como dicotomía. (Confianza: Media‑Alta) [bytebell](https://bytebell.ai/blog/advance-code-chunking)
+
+- **Formato: ¿sin formato siempre?**  
+  - Posición A: Pan et al. concluyen que quitar todo formato es casi gratis en desempeño y ahorra muchos tokens, recomendando usar código minificado con una herramienta de ida y vuelta. [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+  - Posición B: el mismo paper muestra que eliminar sólo una clase de tokens de formato puede degradar fuertemente modelos como Gemini; además, Python está limitado por la semántica del espacio en blanco. [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+  - Resultado: para un repositorio AI‑native interno, **sí** conviene usar código sin formato; para compatibilidad multi‑modelo, hay que tratar con cuidado los formatos mixtos y los lenguajes whitespace‑sensitive. (Confianza: Alta)  
+
+- **Comentarios vs token‑budget**  
+  - Posición A: MANGO y otros trabajos muestran que comentarios alineados con código mejoran Pass@k y reducen la dificultad, especialmente para modelos pequeños, actuando como pivotes lógicos. [aclanthology](https://aclanthology.org/2024.findings-acl.420.pdf)
+  - Posición B: cada comentario son tokens extra; Pan et al. muestran que tokens aparentemente “no esenciales” pueden tener costo significativo en el presupuesto. [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+  - Síntesis: comentarios **cortos, estructurados y alineados** son una inversión de tokens rentable; narrativa larga y redundante no lo es. (Confianza: Media‑Alta)  
+
+- **DRY humano vs WET LLM**  
+  - Posición A: ingenieros enfatizan DRY para mantenibilidad, limpieza y menor superficie de bugs.  
+  - Posición B: observaciones empíricas muestran que los LLM producen código WET y que cierta redundancia local facilita su uso (menos saltos de contexto), mientras que DeRep necesita cuidado para no destruir calidad al eliminar repetición. [linkedin](https://www.linkedin.com/posts/geoffhendrey_how-good-programmers-write-code-dry-dont-activity-7414782850778030082-BPnB)
+  - Para un repositorio AI‑native, la métrica de optimización es **capacidad del agente** más que número de líneas: DRY se aplica a nivel de plantillas/generadores, no de manual refactoring profundo. (Confianza: Media)  
+
+- **Long‑context training vs RAG estructural**  
+  - Posición A: modelos como FilM‑7B con IN² training y técnicas de long‑short alignment mitigan “lost‑in‑the‑middle” y acercan el rendimiento a GPT‑4‑Turbo en tareas long‑context. [icml](https://icml.cc/virtual/2025/poster/43801)
+  - Posición B: incluso con mejoras, estudios siguen reportando degradación sustancial y necesidad de entrenar datasets sintéticos específicos; RAG estructural y chunking siguen siendo necesarios en la práctica. [huggingface](https://huggingface.co/papers?q=long-context+failure)
+  - Resultado: la arquitectura propuesta asume que RAG estructural seguirá siendo la columna vertebral, y que long‑context mejorado es un multiplicador, no un reemplazo. (Confianza: Media‑Alta)  
+
+***
+
+## 7. FUENTES CITADAS (The Receipts)
+
+- AST serializado vs código:  
+  - AST(NIT) – “Code vs Serialized AST Inputs for LLM-Based Code Summarization” (arXiv). [arxiv](https://arxiv.org/html/2602.06671v1)
+- Formato y tokens:  
+  - “The Hidden Cost of Readability: How Code Formatting Silently Consumes Your LLM Budget”. [xiaoningdu.github](https://xiaoningdu.github.io/assets/pdf/format.pdf)
+- Comentarios como pivotes lógicos:  
+  - “Comments as Natural Logic Pivots: Improve Code Generation via Comment Perspective (MANGO)”. [aclanthology](https://aclanthology.org/2024.findings-acl.420.pdf)
+- Chunking AST/graph y RAG de código:  
+  - cAST y AST‑based chunking para RAG. [medium](https://medium.com/@vishnudhat/rag-for-llm-code-generation-using-ast-based-chunking-for-codebase-c55bbd60836e)
+  - ByteBell: “Advanced Code Chunking Strategies for RAG Systems” (AST‑T5, HCGS, GraphCodeBERT, CodeGRAG, EvoR, RAR, SPLADE, ColBERT, etc.). [bytebell](https://bytebell.ai/blog/advance-code-chunking)
+- Long‑context y “loss in the middle”:  
+  - Estudios recientes de fallos en contextos largos y “know but don’t tell”. [huggingface](https://huggingface.co/papers?q=long-context+failure)
+  - Trabajo de Philipp Schmid sobre degradación multi‑turno (~39%). [linkedin](https://www.linkedin.com/posts/philipp-schmid-a6a2bb196_do-llms-struggle-in-long-multi-turn-conversations-activity-7329049107690381312-aRJL)
+  - “Make Your LLM Fully Utilize the Context” (FilM‑7B, IN²). [arxiv](https://arxiv.org/html/2404.16811v2)
+  - “Long-Short Alignment for Effective Long-Context Modeling”. [icml](https://icml.cc/virtual/2025/poster/43801)
+  - Otros trabajos de contexto largo citados en reviews. [scribd](https://www.scribd.com/document/840565205/NeurIPS-2024-Make-Your-Llm-Fully-Utilize-the-Context-Paper-Conference)
+- Benchmarks de código y utilidad real:  
+  - SWE‑Bench+ y análisis de “solution leakage” y patches plausibles. [arxiv](https://arxiv.org/html/2506.12286v4)
+  - Análisis de SWE‑Bench vs utilidad real (blog). [ehudreiter](https://ehudreiter.com/2025/01/13/do-llm-coding-benchmarks-measure-real-world-utility/)
+  - SWE‑Bench leaderboard y correlación con escenarios prácticos. [codeant](https://www.codeant.ai/blogs/swe-bench-scores)
+- DRY/WET y repetición:  
+  - Discusión sobre “LLMs write code WET”. [linkedin](https://www.linkedin.com/posts/geoffhendrey_how-good-programmers-write-code-dry-dont-activity-7414782850778030082-BPnB)
+  - “Demystifying Repetition in LLM-based Code Generation” (DeRep). [arxiv](https://arxiv.org/html/2504.12608v1)
+- AST vs texto:  
+  - Debate sobre modificación vía AST vs re‑escritura textual. [reddit](https://www.reddit.com/r/programming/comments/1iqzcf6/getting_llms_to_more_reliably_modify_code_lets/)
+- Lenguajes AI‑native y agentes:  
+  - Dana: lenguaje “agent‑native” con `agent` keyword y runtime orientado a workflows. [linkedin](https://www.linkedin.com/posts/ctnguyen_dana-the-agent-native-evolution-of-ai-development-activity-7346422164004249601-55vk)
+  - Agentis: lenguaje AI‑native con DAG binario direccionado por hash y primitiva “todo es prompt”. [news.ycombinator](https://news.ycombinator.com/item?id=47317010)
+  - “AI Agents: What Would Be the Best Programming Language for LLMs?” (discusión por capas, AI‑native format, etc.). [akitaonrails](https://www.akitaonrails.com/en/2026/02/09/ai-agents-best-programming-language-for-llms/)
+- Lenguajes y tipado para agentes:  
+  - Experiencias sobre Python vs TypeScript vs C/Rust/Go para AI‑assisted coding. [reddit](https://www.reddit.com/r/ChatGPTCoding/comments/1ms3u0i/which_programming_languages_have_you_got_most/)
+
+Este blueprint te da los ladrillos para diseñar un repositorio ioDesk estrictamente AI‑native: si quieres, el siguiente paso puede ser bajar esto a un prototipo concreto (esquema de serialización, convenciones de comentarios, y pipeline de RAG) aplicado a un repo real de tu empresa.

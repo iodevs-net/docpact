@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://docpact.dev/schemas/contrato-v1.json",
+  "title": "CONTRATO — Protocolo de verificación de código para agentes de IA",
+  "description": "Un CONTRATO es un bloque estructurado dentro del docstring de una función que declara su interfaz, efectos, reglas de negocio y dependencias. Permite que agentes de IA verifiquen estáticamente que el código hace lo que promete.",
+  "type": "object",
+  "properties": {
+    "input": {
+      "type": "object",
+      "description": "Parámetros de entrada de la función. Cada clave es el nombre del parámetro.",
+      "patternProperties": {
+        "^[a-zA-Z_][a-zA-Z0-9_]*$": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Tipo del parámetro (type hint)."
+            },
+            "description": {
+              "type": "string",
+              "description": "Descripción opcional del parámetro."
+            }
+          },
+          "required": ["type"],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "output": {
+      "type": "object",
+      "description": "Valor de retorno de la función.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Tipo del retorno (type hint)."
+        },
+        "description": {
+          "type": "string",
+          "description": "Descripción opcional del valor de retorno."
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    "side_effects": {
+      "description": "Efectos secundarios que la función produce fuera de su retorno. 'ninguno' cuando no hay efectos.",
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^ninguno$",
+          "description": "Valor especial que indica que la función no tiene side effects."
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "description": "Lista de side effects separados por coma (formato texto plano por simplicidad en docstrings)."
+        }
+      ]
+    },
+    "rn": {
+      "type": "array",
+      "description": "IDs de reglas de negocio que esta función implementa. Cada regla debe aparecer como comentario # RN-XXX en el cuerpo de la función.",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "pattern": "^RN-[0-9]{3,}$",
+            "description": "ID de regla de negocio (ej: RN-010)."
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^RN-[0-9]{3,}$"
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": ["id"],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "borde": {
+      "type": "array",
+      "description": "Casos borde documentados, con condición y comportamiento esperado.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "condicion": {
+            "type": "string",
+            "description": "Condición del caso borde (ej: 'tickets vacío')."
+          },
+          "comportamiento": {
+            "type": "string",
+            "description": "Comportamiento esperado (ej: 'retorna HorasCalculadas(0, 0, 0)')."
+          }
+        },
+        "required": ["condicion", "comportamiento"],
+        "additionalProperties": false
+      }
+    },
+    "dependencias": {
+      "type": "array",
+      "description": "Referencias a otros módulos/símbolos de los que depende esta función.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-zA-Z0-9_/.\\-]+(::[a-zA-Z_][a-zA-Z0-9_.]*)?$",
+        "description": "Ruta al archivo y símbolo opcional (ej: 'soporte/models/ticket.py::Ticket')."
+      }
+    }
+  },
+  "required": ["side_effects"],
+  "additionalProperties": false
+}

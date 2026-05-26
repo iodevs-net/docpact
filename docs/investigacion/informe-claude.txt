@@ -1,0 +1,464 @@
+================================================================================
+CÓDIGO AI-NATIVE: ANÁLISIS TÉCNICO
+Estructuras de código optimizadas para agentes LLM
+================================================================================
+
+LEYENDA DE EVIDENCIA
+  [EMP] = Empírico — medido directamente en paper o benchmark
+  [INF] = Inferencia razonada — derivado de evidencia relacionada, no medido directo
+  [DEB] = Debate abierto — sin consenso ni benchmark definitivo
+
+
+================================================================================
+1. RESUMEN EJECUTIVO (BLUF)
+================================================================================
+
+El cuello de botella de los agentes no es generación de código — es localización
+de contexto. El paper Agentless (2024) demuestra que ~60% de los fallos en
+SWE-bench ocurren porque el agente no encuentra los archivos correctos, no porque
+no sepa escribir el fix.
+
+Las investigaciones sobre atención en contextos largos ("Lost in the Middle",
+Liu et al. 2023) muestran que los LLMs degradan su rendimiento en información
+ubicada en el centro de ventanas largas. Con ventanas de 32k+ tokens, el efecto
+es estadísticamente significativo.
+
+No existe aún un "formato de código estrictamente AI-native" con benchmarks
+directos. Lo que existe es evidencia indirecta acumulada desde SWE-bench,
+GraphCodeBERT y estudios de context-window que permite derivar principios
+prácticos robustos.
+
+CONCLUSIÓN PRAGMÁTICA:
+La ganancia mayor viene de optimizar localización (qué archivos exponer al agente
+y cómo) más que de cambiar la sintaxis del código en sí.
+
+Evidencia directa disponible:
+  - Localización de archivos es el cuello de botella (Agentless, 2024)
+  - Atención degrada en posición media del contexto (Liu et al. 2023)
+  - Representaciones con grafo de flujo mejoran comprensión (GraphCodeBERT, 2021)
+
+Inferencia razonada (no medida directamente):
+  - Archivos más pequeños y cohesivos reducen dilución de contexto
+  - Tipo explícito (TypeScript, Python typed) reduce ambigüedad en firma
+  - Comentarios estructurados vs. narrativos — aún sin benchmark directo
+
+
+================================================================================
+2. HALLAZGOS CLAVE
+================================================================================
+
+[EMP] HALLAZGO 1: Localización de contexto es el bottleneck real
+-----------------------------------------------------------------
+Agentless (Xia et al., 2024) demuestra que un pipeline no-agéntico (sin
+framework como AutoGPT) supera a sistemas complejos en SWE-bench cuando se
+optimiza la fase de identificación de archivos relevantes. El agente falla
+principalmente porque lee los archivos equivocados, no porque genere código
+incorrecto.
+
+Fuente: arXiv:2407.01489 — Agentless: Demystifying LLM-based Software
+Engineering Agents
+
+
+[EMP] HALLAZGO 2: "Lost in the Middle" — la atención se degrada en el centro
+-----------------------------------------------------------------------------
+Liu et al. (2023) demuestran empíricamente que los LLMs exhiben mejor
+rendimiento recuperando información ubicada al inicio o al final de un contexto
+largo. La información en posiciones centrales tiene mayor probabilidad de ser
+ignorada o confundida.
+
+Fuente: arXiv:2307.03172 — Lost in the Middle: How Language Models Use Long
+Contexts
+
+
+[EMP] HALLAZGO 3: Representaciones estructurales mejoran comprensión
+---------------------------------------------------------------------
+GraphCodeBERT (Guo et al., 2021) incorpora grafos de flujo de datos al
+preentrenamiento y supera a CodeBERT en tareas de búsqueda de código y
+detección de clones. Esto sugiere que la estructura relacional del código aporta
+señal semántica más allá del texto.
+
+NOTA: Estos modelos son anteriores a los LLMs actuales. La transferencia directa
+al comportamiento de GPT-4/Claude es inferencia, no hecho medido.
+
+Fuente: arXiv:2009.10297 — GraphCodeBERT: Pre-training Code Representations
+with Data Flow
+
+
+[EMP] HALLAZGO 4: La interfaz agente-computadora importa más que el modelo
+---------------------------------------------------------------------------
+Yang et al. (2024) muestran que diseñar comandos especializados para la interfaz
+del agente (ACI — Agent-Computer Interface) produce más ganancia que escalar el
+modelo base. El agente con mejor ACI en GPT-4 supera a agentes con peor ACI en
+modelos más grandes.
+
+Fuente: arXiv:2405.15793 — SWE-agent: Agent-Computer Interfaces Enable
+Automated Software Engineering
+
+
+[INF] HALLAZGO 5: DRY vs. WET — el debate sin benchmark directo
+----------------------------------------------------------------
+La comunidad de agentes (Cursor, Cognition/Devin, discusiones en HN) observa
+anecdóticamente que código explícito y local (WET) reduce la necesidad del
+agente de rastrear dependencias a través de archivos. Sin embargo, NO existe
+paper de SWE-bench que mida directamente DRY vs. WET como variable independiente.
+Es una hipótesis plausible con soporte indirecto, no hecho medido.
+
+Fuente: Discusión HN "What we've learned about AI pair programming" (2024) —
+no peer-reviewed
+
+
+[DEB] HALLAZGO 6: AST/IR como formato nativo para LLMs
+-------------------------------------------------------
+Algunos trabajos exploran alimentar al LLM con representaciones intermedias
+(LLVM IR, ASTs serializados) en lugar de texto fuente. Los resultados son
+mixtos: los modelos actuales fueron preentrenados masivamente en código fuente,
+por lo que el texto sigue siendo el formato de mayor "alineación" con sus
+embeddings. El IR puede ayudar en análisis estático, pero no hay evidencia de
+que mejore la generación/edición de código para agentes de propósito general.
+
+Fuente: CodeT5+ (Wang et al., 2023), arXiv:2305.07922
+
+
+================================================================================
+3. LO QUE SÍ FUNCIONA PARA AGENTES
+================================================================================
+
+ESTRUCTURA Y LOCALIZACIÓN
+  → Archivos con responsabilidad única y cohesiva — el agente puede localizarlos
+    con mayor precisión
+  → Nombres de archivos semánticamente ricos:
+      ticket_assignment_engine.py  (bien)
+      utils.py                     (mal)
+  → Un archivo de mapa de módulos explícito (ARCHITECTURE.md o equivalente JSON)
+    que el agente lee primero
+  → Exportaciones e imports explícitos en el tope del archivo, antes de cualquier
+    lógica
+
+TIPADO Y CONTRATOS
+  → Tipos explícitos en cada firma — Python typed hints, TypeScript estricto.
+    Reduce ambigüedad en la inferencia del agente sobre qué acepta/retorna
+    una función
+  → Enums en lugar de strings literales — el agente no necesita inferir valores
+    válidos de contexto disperso
+  → Schemas Pydantic / Zod en los límites del sistema — contratos machine-readable
+    en el código mismo
+
+COMENTARIOS ESTRUCTURADOS
+  → Docstrings con secciones etiquetadas explícitamente:
+    Args:, Returns:, Raises:, Preconditions:
+  → Precondiciones y postcondiciones como comentarios estructurados — el agente
+    puede razonar sobre invariantes
+  → Comentarios que expresan POR QUÉ, no QUÉ — el qué ya está en el código
+
+GESTIÓN DE CONTEXTO
+  → Archivos de índice por módulo (__init__.py o index.ts) que re-exporta y
+    documenta el surface area
+  → Tests como especificación ejecutable — un test bien nombrado comunica el
+    comportamiento esperado mejor que un comentario
+  → Constantes y configuración en un solo punto de verdad visible desde el tope
+    del contexto
+
+EJEMPLO — Docstring estructurado AI-friendly (Python):
+
+    def assign_ticket(
+        ticket_id: int,
+        technician_id: int,
+        priority: Priority
+    ) -> AssignmentResult:
+        """
+        Assigns a support ticket to a technician.
+
+        Preconditions:
+            - ticket_id must reference an existing, unassigned ticket
+            - technician_id must reference an active technician with capacity > 0
+            - priority must be a valid Priority enum value
+
+        Args:
+            ticket_id: PK of the Ticket model (tickets_ticket.id)
+            technician_id: PK of the Technician model (auth_user.id, role=TECH)
+            priority: Priority enum (LOW | MEDIUM | HIGH | CRITICAL)
+
+        Returns:
+            AssignmentResult with fields:
+                success (bool), ticket (Ticket), assigned_at (datetime)
+
+        Raises:
+            TicketNotFound: if ticket_id does not exist
+            TechnicianAtCapacity: if technician has reached max_concurrent_tickets
+
+        Side effects:
+            - Sends notification to technician (async task, non-blocking)
+            - Updates ticket.status to ASSIGNED
+        """
+
+NOTA: Este formato sigue Google Style para Python docstrings, ampliamente
+presente en el corpus de preentrenamiento de los LLMs, lo que aumenta la
+probabilidad de que sea interpretado correctamente.
+
+
+================================================================================
+4. LO QUE NO FUNCIONA (LAS TRAMPAS DEL CÓDIGO "HUMANO")
+================================================================================
+
+FRAGMENTACIÓN EXCESIVA
+  ✕ Archivos de 30-50 líneas que obligan al agente a rastrear 15 imports para
+    entender una operación
+  ✕ Carpetas de utils/ con lógica de negocio mezclada con helpers — el agente
+    no puede distinguir relevancia
+  ✕ Re-exports sin documentar hacen que el agente pierda el origen real de una
+    función
+
+NOMBRES AMBIGUOS Y GENÉRICOS
+  ✕ utils.py, helpers.js, misc.py — no proveen señal semántica para localización
+  ✕ Variables de una letra en scopes grandes — el agente no puede distinguir x
+    entre contextos
+  ✕ Nombres de funciones que describen implementación, no intención:
+      loop_and_check       (mal)
+      validate_sla_compliance  (bien)
+
+COMENTARIOS NARRATIVOS SIN ESTRUCTURA
+  ✕ Párrafos de prosa que explican historia de decisiones sin formato — el agente
+    extrae señal pero con menor precisión que de texto etiquetado
+  ✕ Comentarios desactualizados que contradicen el código — el agente no puede
+    arbitrar entre ambos con certeza
+  ✕ TODOs sin contexto de quién, cuándo, por qué — ruido semántico
+
+MAGIC VALUES Y CONTEXTO IMPLÍCITO
+  ✕ if status == 3:  (el agente debe inferir qué significa 3 desde contexto disperso)
+  ✕ Configuración hardcodeada en la lógica — el agente modifica lógica cuando
+    debería modificar config
+  ✕ Herencia profunda sin documentar el árbol — el agente puede romper la cadena
+    al modificar una clase base
+
+SOBRE DRY — LA ADVERTENCIA HONESTA:
+La afirmación de que "DRY perjudica a los LLMs" circula en la comunidad de
+agentes pero NO tiene benchmark directo que la respalde cuantitativamente.
+Lo que sí es verificable: la fragmentación excesiva aumenta la cantidad de
+archivos que el agente debe localizar y cargar en contexto, lo que tiene costo
+medible en tokens y en probabilidad de dilución de atención (Liu et al. 2023).
+
+La recomendación pragmática no es "abandonar DRY" sino ajustar la granularidad:
+abstracciones grandes y cohesivas son más trazables para el agente que
+micro-abstracciones de 5 líneas distribuidas en 8 archivos.
+
+
+================================================================================
+5. BLUEPRINT PARA IODESK (DJANGO + REACT)
+================================================================================
+
+5.1 ESTRUCTURA DE ARCHIVOS
+---------------------------
+
+  iodesk/
+  ├── ARCHITECTURE.md              # Mapa de módulos — el agente lee esto primero
+  ├── tickets/
+  │   ├── models.py                # Solo modelos ORM + métodos de negocio del modelo
+  │   ├── assignment_engine.py     # Lógica de asignación — cohesiva, nombrada por dominio
+  │   ├── sla_calculator.py        # SLA — separado por complejidad propia
+  │   ├── serializers.py           # Contratos API — surface area visible
+  │   ├── views.py                 # Solo routing HTTP + autorización
+  │   └── tests/
+  │       ├── test_assignment.py   # Nombre = especificación del comportamiento
+  │       └── test_sla.py
+  └── frontend/
+      └── src/
+          ├── features/
+          │   └── tickets/
+          │       ├── TicketList.tsx       # Componente + lógica local
+          │       ├── TicketList.types.ts  # Tipos propios — colocados junto al componente
+          │       └── useTicketList.ts     # Hook separado del JSX, mismo módulo
+          └── api/
+              └── tickets.ts      # Contratos de API tipados con Zod schemas
+
+
+5.2 SINTAXIS Y TIPADO
+----------------------
+
+Python — siempre typed, enums para valores discretos:
+
+    from enum import Enum
+    from dataclasses import dataclass
+
+    class TicketStatus(str, Enum):
+        OPEN = "open"
+        ASSIGNED = "assigned"
+        RESOLVED = "resolved"
+
+    class Priority(str, Enum):
+        LOW = "low"
+        MEDIUM = "medium"
+        HIGH = "high"
+        CRITICAL = "critical"
+
+    @dataclass
+    class AssignmentResult:
+        success: bool
+        ticket: "Ticket"
+        assigned_at: datetime
+        error_code: str | None = None
+
+TypeScript — strict mode, Zod para contratos de runtime:
+
+    import { z } from "zod"
+
+    export const TicketSchema = z.object({
+      id: z.number().int().positive(),
+      status: z.enum(["open", "assigned", "resolved"]),
+      priority: z.enum(["low", "medium", "high", "critical"]),
+      technician_id: z.number().int().positive().nullable(),
+      created_at: z.string().datetime(),
+    })
+
+    export type Ticket = z.infer<typeof TicketSchema>
+
+
+5.3 FORMATO DE COMENTARIOS / METADATOS
+---------------------------------------
+
+La convención que maximiza la probabilidad de interpretación correcta por el
+agente es la que más aparece en el corpus de preentrenamiento:
+  - Python:     Google Style docstrings
+  - TypeScript: JSDoc estructurado
+
+No inventar formatos propietarios que el agente no ha visto en preentrenamiento.
+
+Ejemplo de ARCHITECTURE.md (leído por el agente antes de cualquier tarea):
+
+    ## Módulos principales
+
+    | Módulo               | Archivo                          | Responsabilidad                       |
+    |----------------------|----------------------------------|---------------------------------------|
+    | Asignación tickets   | tickets/assignment_engine.py     | Reglas de routing y capacidad         |
+    | Cálculo SLA          | tickets/sla_calculator.py        | Tiempos de respuesta por prioridad    |
+    | API Tickets          | tickets/views.py + serializers.py| Endpoints REST                        |
+
+    ## Decisiones de diseño
+    - Los modelos Django NO contienen lógica de negocio compleja — va en *_engine.py
+    - Los componentes React NO hacen fetch directo — usan hooks de /api/*.ts
+    - Toda constante de configuración vive en settings.py (backend)
+      o config/constants.ts (frontend)
+
+
+5.4 GESTIÓN DE CONTEXTO PARA EL AGENTE
+----------------------------------------
+
+Paso 1 — ARCHITECTURE.md como punto de entrada
+  Instrúyelo explícitamente en el system prompt del agente:
+  "Lee ARCHITECTURE.md antes de modificar cualquier archivo."
+  Este archivo es el mapa que reduce el espacio de búsqueda del agente.
+
+Paso 2 — Tests como especificación
+  Un test bien nombrado como:
+    test_ticket_cannot_be_assigned_if_technician_at_capacity
+  comunica el comportamiento esperado con mayor precisión que un comentario.
+  Los tests deben correr en el loop del agente para validación instantánea.
+
+Paso 3 — Orden en el contexto importa
+  Según Liu et al. 2023, coloca la información más crítica para la tarea al
+  INICIO del contexto enviado al agente (instrucción + archivo relevante
+  principal), no en el centro de un bloque de 10 archivos concatenados.
+
+Paso 4 — No incluir archivos "por si acaso"
+  Cada archivo adicional en el contexto diluyó la atención. Mejor un pipeline
+  de localización (como Agentless) que identifica los 2-3 archivos realmente
+  relevantes, que cargar todo el repositorio.
+
+
+================================================================================
+6. CONTRADICCIONES Y DEBATES SOTA
+================================================================================
+
+[DEB] Posición A vs. Posición B: ¿texto fuente u otras representaciones?
+-------------------------------------------------------------------------
+Posición A — texto fuente es óptimo:
+  Los LLMs fueron preentrenados en código fuente a escala masiva. Su espacio de
+  embeddings está alineado con texto, no con ASTs o IRs. Alimentarles
+  representaciones estructurales que no aparecen en el preentrenamiento degrada
+  el rendimiento. Soporte: resultados de fine-tuning muestran que código fuente
+  bien formateado sigue siendo el formato más efectivo para GPT-4/Claude.
+
+Posición B — representaciones estructurales son superiores:
+  GraphCodeBERT y modelos similares muestran que añadir grafos de flujo de datos
+  mejora tareas de comprensión de código. Los LLMs actuales podrían beneficiarse
+  de ASTs anotados como contexto AUXILIAR (no reemplazo). Soporte: herramientas
+  como Tree-sitter ya se usan en Copilot y Cursor para enriquecer el contexto
+  antes de enviarlo al LLM.
+
+Estado actual: sin resolución empírica directa para LLMs de propósito general.
+
+
+[DEB] Monorepo vs. repositorios separados para agentes
+-------------------------------------------------------
+Los monorepos exponen más código al agente en una sola búsqueda, pero aumentan
+el ruido. Los repos separados reducen el scope pero fragmentan el contexto cuando
+hay dependencias cruzadas. SWE-bench usa repos individuales; no hay benchmark que
+mida directamente este tradeoff en entornos de producción multi-servicio.
+
+Fuente: Debate activo en Cursor, Devin, GitHub Copilot Workspace — sin paper.
+
+
+[DEB] ¿Cuánto comentario es suficiente para el agente?
+-------------------------------------------------------
+Algunos equipos reportan que comentarios excesivos añaden tokens sin mejorar el
+razonamiento del agente, e incluso introducen ruido cuando están desactualizados.
+La posición contraria argumenta que comentarios estructurados (precondiciones,
+postcondiciones) reducen hallucination en funciones complejas.
+
+No existe benchmark directo que compare densidades de comentario en SWE-bench.
+
+Fuente: Discusiones internas de Cognition AI (Devin) y Cursor — no peer-reviewed.
+
+
+[DEB] ¿El "código AI-native" debería existir como categoría?
+------------------------------------------------------------
+Una posición emergente (Karpathy, 2024) argumenta que el código del futuro será
+generado y modificado 100% por agentes, haciendo irrelevante la legibilidad
+humana. La posición opuesta (mayoría de la industria) mantiene que los humanos
+deben poder auditar, revisar y hacer rollback del código, lo que requiere
+mantener legibilidad. Esta tensión no está resuelta.
+
+Fuente: Karpathy, X/Twitter (2024), "Software 3.0" — no peer-reviewed.
+
+
+================================================================================
+7. FUENTES CITADAS
+================================================================================
+
+[1] arXiv:2407.01489
+    Xia et al. (2024). Agentless: Demystifying LLM-based Software Engineering
+    Agents. https://arxiv.org/abs/2407.01489
+
+[2] arXiv:2307.03172
+    Liu et al. (2023). Lost in the Middle: How Language Models Use Long Contexts.
+    https://arxiv.org/abs/2307.03172
+
+[3] arXiv:2405.15793
+    Yang et al. (2024). SWE-agent: Agent-Computer Interfaces Enable Automated
+    Software Engineering. https://arxiv.org/abs/2405.15793
+
+[4] arXiv:2310.06770
+    Jimenez et al. (2024). SWE-bench: Can Language Models Resolve Real-world
+    Github Issues? https://arxiv.org/abs/2310.06770
+
+[5] arXiv:2009.10297
+    Guo et al. (2021). GraphCodeBERT: Pre-training Code Representations with
+    Data Flow. https://arxiv.org/abs/2009.10297
+
+[6] arXiv:2305.07922
+    Wang et al. (2023). CodeT5+: Open Code Large Language Models for Code
+    Understanding and Generation. https://arxiv.org/abs/2305.07922
+
+[7] github.com/tree-sitter/tree-sitter
+    Tree-sitter: parser toolkit usado por Cursor y Copilot para enriquecer
+    contexto antes de enviarlo al LLM. https://github.com/tree-sitter/tree-sitter
+
+[8] Google Python Style Guide — Docstring conventions
+    https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings
+
+NOTA METODOLÓGICA:
+Las discusiones de Cursor, Cognition/Devin y posts de Karpathy están citados
+como contexto de debate de industria, no como evidencia empírica. La distinción
+entre [EMP], [INF] y [DEB] a lo largo del documento es intencional y refleja
+el estado real del conocimiento disponible.
+
+================================================================================

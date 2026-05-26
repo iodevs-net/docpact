@@ -1,0 +1,217 @@
+"""CLI de docpact — punto de entrada principal.
+
+Comandos:
+  extract   Extrae CONTRATOS de archivos Python
+  check     Verifica CONTRATOS (Fase 2)
+  init      Genera esqueletos de CONTRATO (Fase 4)
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Punto de entrada principal del CLI."""
+    parser = argparse.ArgumentParser(
+        prog="docpact",
+        description="Verificador de CONTRATOS en código — sincroniza docstrings con implementación real",
+    )
+    parser.add_argument(
+        "--version", action="version",
+        version=f"docpact {_get_version()}"
+    )
+
+    subparsers = parser.add_subparsers(dest="command", help="Comando")
+
+    # ├─ extract
+    extract_parser = subparsers.add_parser(
+        "extract", help="Extrae CONTRATOS de archivos Python"
+    )
+    extract_parser.add_argument(
+        "path", type=str, help="Archivo o directorio a analizar"
+    )
+    extract_parser.add_argument(
+        "--include-private", action="store_true",
+        help="Incluir funciones privadas (prefijo _)"
+    )
+    extract_parser.add_argument(
+        "--format", choices=["text", "json"], default="text",
+        help="Formato de salida"
+    )
+
+    # ├─ check  (Fase 2 — placeholder)
+    check_parser = subparsers.add_parser(
+        "check", help="Verifica CONTRATOS contra implementación"
+    )
+    check_parser.add_argument(
+        "path", type=str, help="Archivo o directorio a verificar"
+    )
+    check_parser.add_argument(
+        "--strict", action="store_true",
+        help="Falla si hay funciones públicas sin CONTRATO"
+    )
+    check_parser.add_argument(
+        "--config", type=str, default=None,
+        help="Ruta al archivo de configuración docpact.toml"
+    )
+    check_parser.add_argument(
+        "--report", action="store_true",
+        help="Reporte detallado con sugerencias"
+    )
+
+    # ├─ init  (Fase 4 — placeholder)
+    init_parser = subparsers.add_parser(
+        "init", help="Genera esqueletos de CONTRATO para funciones sin contrato"
+    )
+    init_parser.add_argument(
+        "path", type=str, help="Archivo o directorio"
+    )
+    init_parser.add_argument(
+        "--function", type=str, default=None,
+        help="Nombre específico de función"
+    )
+    init_parser.add_argument(
+        "--batch", action="store_true",
+        help="Procesar todo el directorio"
+    )
+
+    args = parser.parse_args(argv)
+
+    if args.command == "extract":
+        return _cmd_extract(args)
+    elif args.command == "check":
+        return _cmd_check(args)
+    elif args.command == "init":
+        return _cmd_init(args)
+    else:
+        parser.print_help()
+        return 0
+
+
+def _get_version() -> str:
+    try:
+        from docpact import __version__
+        return __version__
+    except ImportError:
+        return "0.1.0-dev"
+
+
+def _cmd_extract(args: argparse.Namespace) -> int:
+    """Comando extract: extrae CONTRATOS de archivos."""
+    from docpact.parser.extractor import extraer_docstrings
+    from docpact.parser.lexer import tokenizar
+    from docpact.parser.parser import parsear
+
+    path = Path(args.path)
+    if path.is_dir():
+        archivos = list(path.rglob("*.py"))
+    elif path.is_file():
+        archivos = [path]
+    else:
+        print(f"❌ No encontrado: {path}", file=sys.stderr)
+        return 2
+
+    resultados = []
+    for archivo in archivos:
+        if _es_excluido(archivo):
+            continue
+        try:
+            docstrings = extraer_docstrings(
+                archivo, incluir_privadas=args.include_private
+            )
+        except (SyntaxError, FileNotFoundError) as e:
+            print(f"⚠️  {archivo}: {e}", file=sys.stderr)
+            continue
+
+        for linea, nombre, tipo, doc in docstrings:
+            tokens = tokenizar(doc)
+            contrato, errores = parsear(tokens)
+            if contrato.side_effects or contrato.rn or contrato.input or contrato.output:
+                resultados.append({
+                    "archivo": str(archivo),
+                    "funcion": nombre,
+                    "tipo": tipo,
+                    "linea": linea,
+                    "contrato": {
+                        "input": {k: {"tipo": v.tipo, "descripcion": v.descripcion}
+                                  for k, v in contrato.input.items()},
+                        "output": contrato.output,
+                        "output_descripcion": contrato.output_descripcion,
+                        "side_effects": [s.descripcion for s in contrato.side_effects],
+                        "rn": [{"id": r.id, "descripcion": r.descripcion} for r in contrato.rn],
+                        "borde": [{"condicion": b.condicion, "comportamiento": b.comportamiento}
+                                  for b in contrato.borde],
+                        "dependencias": [d.ref for d in contrato.dependencias],
+                    },
+                    "errores": [{"campo": e.campo, "mensaje": e.mensaje, "sugerencia": e.sugerencia}
+                                for e in errores],
+                })
+
+    if args.format == "json":
+        print(json.dumps(resultados, indent=2, ensure_ascii=False))
+    else:
+        if not resultados:
+            print("📭 No se encontraron CONTRATOS.")
+            return 0
+        print(f"📄 {len(resultados)} CONTRATOS encontrados:\n")
+        for r in resultados:
+            _print_contrato_texto(r)
+
+    return 0
+
+
+def _print_contrato_texto(r: dict) -> None:
+    """Imprime un CONTRATO en formato texto legible."""
+    loc = f"{r['archivo']}::{r['funcion']}:{r['linea']}"
+    print(f"── {loc}")
+    c = r["contrato"]
+    if c["input"]:
+        print(f"  input: {len(c['input'])} parámetros")
+    if c["output"]:
+        desc = f" — {c['output_descripcion']}" if c["output_descripcion"] else ""
+        print(f"  output: {c['output']}{desc}")
+    se = c["side_effects"]
+    print(f"  side_effects: {', '.join(se) if se else 'ninguno'}")
+    if c["rn"]:
+        print(f"  rn: {', '.join(r['id'] for r in c['rn'])}")
+    if c.get("errores"):
+        for e in c["errores"]:
+            msg = f"  ⚠️  [{e['campo']}] {e['mensaje']}"
+            if e.get("sugerencia"):
+                msg += f"\n     💡 {e['sugerencia']}"
+            print(msg)
+    print()
+
+
+def _cmd_check(args: argparse.Namespace) -> int:
+    """Comando check: verifica CONTRATOS (placeholder hasta Fase 2)."""
+    print("🔍 docpact check — Fase 2 (no implementada aún)")
+    print("   Ejecuta 'docpact extract' para ver los contratos encontrados.")
+    return 0
+
+
+def _cmd_init(args: argparse.Namespace) -> int:
+    """Comando init: genera esqueletos de CONTRATO (placeholder hasta Fase 4)."""
+    print("📝 docpact init — Fase 4 (no implementada aún)")
+    print("   Por ahora usa 'docpact extract' para inspeccionar contratos existentes.")
+    return 0
+
+
+def _es_excluido(path: Path) -> bool:
+    """Verifica si un path debe ser excluido."""
+    excluidos = {
+        "__pycache__", ".venv", "venv", "node_modules",
+        ".git", "migrations", ".pytest_cache",
+    }
+    for parte in path.parts:
+        if parte in excluidos:
+            return True
+    return False
+
+
+if __name__ == "__main__":
+    sys.exit(main())
