@@ -112,9 +112,8 @@ def _generar_bloque(
     else:
         lines.append("    side_effects: ninguno")
 
-    # RN: placeholder
-    lines.append("    rn:")
-    lines.append("      - TODO: agregar RN-XXX")
+    # RN: vacío (el agente debe completar con la RN correcta)
+    lines.append('    rn: []  # completar con RN-XXX de docs/reglas-del-negocio/')
 
     # Dependencias: detectar imports locales del módulo
     deps = _detectar_dependencias(fuente, path)
@@ -216,8 +215,22 @@ def _insertar_contrato_en_docstring(
 
     if doc_expr:
         expr_node, _ = doc_expr
-        start = expr_node.lineno  # 1-based, línea de apertura """
-        end = expr_node.end_lineno or start  # 1-based, línea de cierre """
+        start = expr_node.lineno  # 1-based
+        end = expr_node.end_lineno or start  # 1-based
+
+        # Si es docstring de una línea: convertir a multi-línea
+        if start == end:
+            idx = start - 1  # 0-based
+            line = lineas[idx]
+            # Extraer el contenido entre """..."""
+            if '"""' in line:
+                parts = line.split('"""', 2)
+                if len(parts) >= 3:
+                    content = parts[1]
+                    # Reemplazar línea por versión multi-línea
+                    lineas[idx] = parts[0] + '"""' + content
+                    lineas.insert(idx + 1, '"""')
+                    end = start + 1
 
         # El bloque CONTRATO va antes del cierre """ (última línea)
         insert_idx = end - 1  # 0-based
