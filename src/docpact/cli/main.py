@@ -270,10 +270,25 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
-    """Comando init: genera esqueletos de CONTRATO (placeholder hasta Fase 4)."""
-    print("📝 docpact init — Fase 4 (no implementada aún)")
-    print("   Por ahora usa 'docpact extract' para inspeccionar contratos existentes.")
-    return 0
+    """Comando init: genera esqueletos de CONTRATO para funciones sin contrato."""
+    from docpact.cli.init import init_function, init_batch
+
+    path = args.path
+    if args.function:
+        exito, msg = init_function(path, args.function)
+        print(f"{'✅' if exito else '⚠️'} {msg}")
+        return 0 if exito else 1
+    elif args.batch:
+        resultados = init_batch(path)
+        exito = sum(1 for _, ok, _ in resultados if ok)
+        total = len(resultados)
+        print(f"📝 {exito}/{total} CONTRATOS generados")
+        for nombre, ok, msg in resultados:
+            print(f"  {'✅' if ok else '⚠️'} {msg}")
+        return 0
+    else:
+        print("Usa --function <nombre> o --batch")
+        return 1
 
 
 def _es_excluido(path: Path) -> bool:
