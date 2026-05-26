@@ -190,36 +190,59 @@ def _insertar_contrato_en_docstring(
     nombre: str,
     bloque: str,
 ) -> tuple[bool, str]:
-    """Inserta el bloque CONTRATO en la función.
+    """Inserta el bloque CONTRATO en el docstring de la función.
 
-    Solo modifica funciones SIN docstring (agrega docstring + CONTRATO).
-    Funciones con docstring existente se saltan para no romper el formato.
+    Si no hay docstring: crea uno nuevo.
+    Si hay docstring: inserta el CONTRATO antes del cierre (soporta multi-linea).
 
     Returns:
-        (exito, mensaje_error_o_fuente_modificada)
+        (exito, fuente_modificada_o_mensaje)
     """
     lineas = fuente.split("\n")
 
     # Detectar si ya hay docstring
+    doc_expr = None
     for item in ast.iter_child_nodes(node):
-        if isinstance(item, ast.Expr) and isinstance(item.value, (ast.Constant, ast.Str)):
-            return False, "Tiene docstring existente — agrega el CONTRATO manualmente dentro del docstring"
+        if isinstance(item, ast.Expr):
+            val = item.value
+            if isinstance(val, ast.Constant) and isinstance(val.value, str):
+                doc_expr = (item, val)
+                break
+            if isinstance(val, ast.Str):
+                doc_expr = (item, val)
+                break
 
-    # Crear docstring completo con CONTRATO
-    indent = " " * 4
-    doc_lines = [
-        f'{indent}"""{nombre} — Descripción.',
-        "",
-    ]
-    for bloque_linea in bloque.split("\n"):
-        doc_lines.append(indent + bloque_linea)
-    doc_lines.append(f'{indent}"""')
+    indent = " " * 4  # indentación estándar del cuerpo
 
-    # Insertar después de la línea def
-    insert_line = node.lineno  # 1-based
-    doc_lines.reverse()
-    for dl in doc_lines:
-        lineas.insert(insert_line, dl)
+    if doc_expr:
+        expr_node, _ = doc_expr
+        start = expr_node.lineno  # 1-based, línea de apertura """
+        end = expr_node.end_lineno or start  # 1-based, línea de cierre """
+
+        # El bloque CONTRATO va antes del cierre """ (última línea)
+        insert_idx = end - 1  # 0-based
+
+        # Formatear bloque con indentación correcta
+        bloque_indentado = []
+        for bloque_linea in bloque.split("\n"):
+            bloque_indentado.append(indent + bloque_linea)
+
+        lineas[insert_idx:insert_idx] = bloque_indentado
+    else:
+        # No hay docstring — crear uno completo
+        doc_lines = [
+            f'{indent}"""{nombre} — Descripción.',
+            "",
+        ]
+        for bloque_linea in bloque.split("\n"):
+            doc_lines.append(indent + bloque_linea)
+        doc_lines.append(f'{indent}"""')
+
+        # Insertar después de la línea def
+        insert_line = node.lineno  # 1-based
+        doc_lines.reverse()
+        for dl in doc_lines:
+            lineas.insert(insert_line, dl)
 
     return True, "\n".join(lineas)
 
