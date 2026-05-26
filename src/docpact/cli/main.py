@@ -188,9 +188,71 @@ def _print_contrato_texto(r: dict) -> None:
 
 
 def _cmd_check(args: argparse.Namespace) -> int:
-    """Comando check: verifica CONTRATOS (placeholder hasta Fase 2)."""
-    print("🔍 docpact check — Fase 2 (no implementada aún)")
-    print("   Ejecuta 'docpact extract' para ver los contratos encontrados.")
+    """Comando check: verifica CONTRATOS contra implementación real."""
+    from docpact.config import DocpactConfig
+    from docpact.checker.orchestrator import check_proyecto
+
+    # Cargar configuración
+    config_path = args.config
+    if not config_path:
+        # Buscar docpact.toml en el path analizado
+        config_candidates = [
+            Path(args.path) / "docpact.toml",
+            Path(args.path) / ".docpact.toml",
+            Path.cwd() / "docpact.toml",
+        ]
+        for cp in config_candidates:
+            if cp.exists():
+                config_path = str(cp)
+                break
+
+    config = DocpactConfig.desde_toml(config_path) if config_path else DocpactConfig()
+    if args.strict:
+        # Sobrescribir strict desde flag CLI
+        config.strict = True
+
+    resultado = check_proyecto(args.path, config)
+
+    # Salida
+    tf = resultado.total_funciones
+    tc = resultado.funciones_con_contrato
+    te = resultado.total_errores
+    tw = resultado.total_warnings
+    score = resultado.calcular_score()
+    nivel = resultado.nivel
+
+    print(f"\n📊 {tf} funciones públicas encontradas")
+    print(f"✅ {tc} contratos válidos")
+    if tw:
+        print(f"⚠️  {tw} warnings")
+    else:
+        print(f"⚠️  0 warnings")
+    if te:
+        print(f"❌ {te} errores")
+    else:
+        print(f"✅ 0 errores")
+    print(f"\nScore: {score}/100 — {nivel}")
+
+    # Mostrar hallazgos detallados
+    if args.report or te > 0 or tw > 0:
+        for archivo_result in resultado.archivos:
+            for func in archivo_result.funciones:
+                if func.hallazgos:
+                    for h in func.hallazgos:
+                        icono = "❌" if h.tipo == "error" else "⚠️"
+                        loc = f"{archivo_result.archivo}::{h.funcion}:{h.linea}"
+                        print(f"\n{icono} {loc}")
+                        print(f"   {h.mensaje}")
+                        if h.sugerencia:
+                            print(f"   💡 {h.sugerencia}")
+                    if not func.errores and not func.warnings:
+                        print(f"  ✅ {func.nombre} — OK")
+
+    if te > 0:
+        return 1
+    if config.strict and tf - tc > 0:
+        # strict mode: funciones sin CONTRATO también fallan
+        return 1
     return 0
 
 
