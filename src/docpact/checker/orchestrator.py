@@ -56,6 +56,13 @@ class Hallazgo:
         )
 
 
+def _suprimir_hallazgos(hallazgos: list[Hallazgo], config: DocpactConfig) -> list[Hallazgo]:
+    """Filtra hallazgos cuyo mensaje coincida con patrones de supresión."""
+    if not config.warnings_suppress:
+        return hallazgos
+    return [h for h in hallazgos if not config.debe_suprimir(h.mensaje)]
+
+
 @dataclass
 class ResultadoFuncion:
     """Resultado de la verificación de una función."""
@@ -394,6 +401,7 @@ def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
                         rn_test_errors_ts = check_rn_tests(ts_rn_ids, ts_root, nombre)
                         for e in rn_test_errors_ts:
                             hallazgos_ts.append(Hallazgo(tipo="error", campo=e.campo, funcion=nombre, archivo=str(path), linea=linea_contrato, mensaje=e.mensaje, sugerencia=e.sugerencia))
+            hallazgos_ts = _suprimir_hallazgos(hallazgos_ts, config)
             resultado.funciones.append(ResultadoFuncion(
                 nombre=nombre,
                 archivo=str(path),
@@ -570,6 +578,8 @@ def _procesar_funcion(
             rn_test_errors = check_rn_tests(rn_ids, proyecto_root, nombre)
             for e in rn_test_errors:
                 hallazgos.append(Hallazgo(tipo="error", campo=e.campo, funcion=nombre, archivo=archivo, linea=node.lineno, mensaje=e.mensaje, sugerencia=e.sugerencia))
+
+    hallazgos = _suprimir_hallazgos(hallazgos, config)
 
     resultado.funciones.append(ResultadoFuncion(
         nombre=nombre,

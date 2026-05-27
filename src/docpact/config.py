@@ -36,13 +36,24 @@ class DocpactConfig:
         exclude: Optional[set[str]] = None,
         patrones_side_effects: Optional[dict[str, list[str]]] = None,
         rn_prefix: str = "RN-",
+        warnings_suppress: Optional[list[str]] = None,
     ):
         self.strict = strict
         self.min_score = min_score
         self.exclude = exclude or EXCLUIDOS_DEFECTO
         self.patrones_side_effects = patrones_side_effects or PATRONES_DEFECTO
         self.rn_prefix = rn_prefix
+        self.warnings_suppress = warnings_suppress or []
         self._patrones_compilados: Optional[dict[str, list[re.Pattern[str]]]] = None
+
+    def debe_suprimir(self, mensaje: str) -> bool:
+        """True si el mensaje contiene algún patrón de supresión."""
+        if not self.warnings_suppress:
+            return False
+        for patron in self.warnings_suppress:
+            if patron in mensaje:
+                return True
+        return False
 
     @property
     def patrones_compilados(self) -> dict[str, list[re.Pattern[str]]]:
@@ -104,12 +115,16 @@ class DocpactConfig:
 
         rn_prefix = docpact_cfg.get("rules", {}).get("rn_prefix", "RN-")
 
+        warnings_cfg = docpact_cfg.get("warnings", {})
+        warnings_suppress = warnings_cfg.get("suppress", [])
+
         return cls(
             strict=strict,
             min_score=min_score,
             exclude=exclude if exclude else None,
             patrones_side_effects=patrones,
             rn_prefix=rn_prefix,
+            warnings_suppress=warnings_suppress,
         )
 
 
