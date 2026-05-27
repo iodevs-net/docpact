@@ -559,6 +559,24 @@ def _procesar_funcion(
     for imp in imp_errores:
         hallazgos.append(Hallazgo(tipo="warning", campo=imp.campo, funcion=nombre, archivo=archivo, linea=imp.linea or node.lineno, mensaje=imp.mensaje, sugerencia=imp.sugerencia))
 
+    # RN patterns — verifica logica real si hay rn_patrones configurados
+    if config.rn_patrones and archivo and contrato.rn:
+        from pathlib import Path as _P
+        from docpact.checker.rn_patterns import verificar_rn_patrones
+        _errores_patron = verificar_rn_patrones(
+            _P(archivo), codigo_funcion, config.rn_patrones, line_offset=node.lineno,
+        )
+        for ep in _errores_patron:
+                hallazgos.append(Hallazgo(
+                    tipo="warning",
+                    campo="rn",
+                    funcion=nombre,
+                    archivo=archivo,
+                    linea=ep.linea,
+                    mensaje=ep.mensaje,
+                    sugerencia=ep.sugerencia,
+                ))
+
     # RN registry check
     from pathlib import Path as _Path
     from typing import Optional as _Optional

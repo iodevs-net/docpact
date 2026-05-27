@@ -37,6 +37,7 @@ class DocpactConfig:
         patrones_side_effects: Optional[dict[str, list[str]]] = None,
         rn_prefix: str = "RN-",
         warnings_suppress: Optional[list[str]] = None,
+        rn_patrones: Optional[dict[str, dict[str, str]]] = None,
     ):
         self.strict = strict
         self.min_score = min_score
@@ -44,6 +45,7 @@ class DocpactConfig:
         self.patrones_side_effects = patrones_side_effects or PATRONES_DEFECTO
         self.rn_prefix = rn_prefix
         self.warnings_suppress = warnings_suppress or []
+        self.rn_patrones = rn_patrones or {}
         self._patrones_compilados: Optional[dict[str, list[re.Pattern[str]]]] = None
 
     def debe_suprimir(self, mensaje: str) -> bool:
@@ -118,6 +120,12 @@ class DocpactConfig:
         warnings_cfg = docpact_cfg.get("warnings", {})
         warnings_suppress = warnings_cfg.get("suppress", [])
 
+        rn_cfg = docpact_cfg.get("rn_patrones", {})
+        rn_patrones = {}
+        for rn_id, cfg in rn_cfg.items():
+            if isinstance(cfg, dict) and "patron" in cfg:
+                rn_patrones[rn_id] = cfg
+
         return cls(
             strict=strict,
             min_score=min_score,
@@ -125,6 +133,7 @@ class DocpactConfig:
             patrones_side_effects=patrones,
             rn_prefix=rn_prefix,
             warnings_suppress=warnings_suppress,
+            rn_patrones=rn_patrones,
         )
 
 
