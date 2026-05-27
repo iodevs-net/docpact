@@ -59,6 +59,10 @@ def main(argv: list[str] | None = None) -> int:
         help="Ruta al archivo de configuración docpact.toml"
     )
     check_parser.add_argument(
+        "--diff", action="store_true",
+        help="Solo verificar archivos modificados vs HEAD (git diff)"
+    )
+    check_parser.add_argument(
         "--report", action="store_true",
         help="Reporte detallado con sugerencias"
     )
@@ -273,7 +277,7 @@ def _cmd_check(args: argparse.Namespace) -> int:
         # Sobrescribir strict desde flag CLI
         config.strict = True
 
-    resultado = check_proyecto(args.path, config)
+    resultado = check_proyecto(args.path, config, diff_only=args.diff)
 
     # Salida
     tf = resultado.total_funciones

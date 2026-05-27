@@ -16,6 +16,11 @@ _PATRONES: list[re.Pattern[str]] = [
     re.compile(r'\bfetch\s*\('),
     re.compile(r'\.(?:create|save|update|delete)\s*\('),
     re.compile(r'\bmutate\s*\('),
+    # Inertia router (SPA navigation que muta estado en servidor)
+    re.compile(r'router\.(?:get|post|put|delete|patch|reload)\s*\('),
+    re.compile(r'router\.visit\s*\('),
+    # window.open = navegación a URL de backend
+    re.compile(r'window\.open\s*\('),
 ]
 
 

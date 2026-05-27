@@ -270,8 +270,12 @@ def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
             except Exception:
                 err_sidefx = []
             for msg in err_sidefx:
+                # Coincidencia de side_effects en TS es heurística:
+                # Inertia router, window.open, fetch pueden no detectarse
+                # por contexto. Usar warning (no error) para evitar falsos
+                # positivos que bloqueen commits.
                 hallazgos_ts.append(Hallazgo(
-                    tipo="error",
+                    tipo="warning",
                     campo="side_effects",
                     funcion=nombre,
                     archivo=str(path),
@@ -605,15 +609,38 @@ def _check_rn_con_fuente(
     return errores
 
 
+def _get_changed_files(ruta_base: Path) -> list[Path]:
+    """Obtiene archivos modificados via git diff.
+
+    Returns:
+        Lista de Paths relativos a ruta_base de archivos modificados.
+        Vacía si no es un repo git o si no hay cambios.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD"],
+            capture_output=True, text=True, cwd=ruta_base,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return [ruta_base / p for p in result.stdout.strip().splitlines()]
+    except (subprocess.SubprocessError, FileNotFoundError):
+        pass
+    return []
+
+
 def check_proyecto(
     path: str | Path,
     config: Optional[DocpactConfig] = None,
+    diff_only: bool = False,
 ) -> ResultadoProyecto:
     """Verifica un proyecto completo (archivo o directorio) en paralelo.
 
     Args:
         path: Ruta al archivo o directorio.
         config: Configuración. Si es None, usa defaults.
+        diff_only: Si True, solo verifica archivos modificados vs HEAD.
 
     Returns:
         ResultadoProyecto con todos los archivos y hallazgos.
@@ -635,6 +662,18 @@ def check_proyecto(
         archivos = []
 
     archivos = [a for a in archivos if not config.debe_excluir(a)]
+
+    if not archivos:
+        return ResultadoProyecto(config=config)
+
+    # Filtrar solo archivos modificados si diff_only está activo
+    if diff_only:
+        changed = _get_changed_files(ruta)
+        if changed:
+            changed_set = set(p.resolve() for p in changed)
+            archivos = [a for a in archivos if a.resolve() in changed_set]
+        # Si no hay cambios o el git diff falla, continuar con archivos filtrados
+        # (puede quedar vacío → resultado vacío = OK)
 
     if not archivos:
         return ResultadoProyecto(config=config)
