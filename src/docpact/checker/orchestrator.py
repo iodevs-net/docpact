@@ -25,7 +25,7 @@ try:
     from docpact.checker.rn_registry_checker import check_rn_against_registry  # type: ignore[import-untyped]
 except ImportError:
     check_rn_against_registry = None
-from docpact.checker.rn_test_checker import check_rn_tests
+from docpact.checker.rn_test_checker import check_rn_tests, check_rn_tests_pasan
 from docpact.config import DocpactConfig
 from docpact.models.contrato import (
     Contrato, ErrorParser, ReglaNegocio, Dependencia, SideEffect,
@@ -581,6 +581,10 @@ def _procesar_funcion(
         if proyecto_root is not None:
             rn_test_errors = check_rn_tests(rn_ids, proyecto_root, nombre)
             for e in rn_test_errors:
+                hallazgos.append(Hallazgo(tipo="error", campo=e.campo, funcion=nombre, archivo=archivo, linea=node.lineno, mensaje=e.mensaje, sugerencia=e.sugerencia))
+            # Verificar que los tests existentes PASEN
+            rn_test_fallos = check_rn_tests_pasan(rn_ids, proyecto_root, nombre)
+            for e in rn_test_fallos:
                 hallazgos.append(Hallazgo(tipo="error", campo=e.campo, funcion=nombre, archivo=archivo, linea=node.lineno, mensaje=e.mensaje, sugerencia=e.sugerencia))
 
     hallazgos = _suprimir_hallazgos(hallazgos, config)
