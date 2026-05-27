@@ -53,11 +53,10 @@ def test_multiples_rns_sin_test(tmp_path: Path):
     assert len(errores) == 3
 
 
-def test_directorio_rn_no_existe(tmp_path: Path):
-    """Si tests/rn/ no existe, debe reportar error de directorio."""
+def test_directorio_rn_sin_errores(tmp_path: Path):
+    """Si tests/rn/ no existe, no es error (el checker omite)."""
     errores = check_rn_tests(["RN-010"], tmp_path)
-    assert len(errores) == 1
-    assert "Directorio" in errores[0].mensaje
+    assert len(errores) == 0
 
 
 def test_rn_con_id_sin_prefijo_omitido(tmp_path: Path):
