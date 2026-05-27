@@ -116,6 +116,23 @@ def main(argv: list[str] | None = None) -> int:
         help="Construir imagen sandbox"
     )
 
+    # ├─ doctor
+    doctor_parser = subparsers.add_parser(
+        "doctor", help="Autodiagnóstico del ecosistema"
+    )
+    doctor_parser.add_argument(
+        "path", type=str, nargs="?", default=".",
+        help="Raíz del proyecto"
+    )
+    doctor_parser.add_argument(
+        "--min-score", type=int, default=90,
+        help="Score mínimo requerido (defecto: 90)"
+    )
+    doctor_parser.add_argument(
+        "--json", action="store_true",
+        help="Salida en formato JSON"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "extract":
@@ -128,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_run(args)
     elif args.command == "mcp":
         return _cmd_mcp(args)
+    elif args.command == "doctor":
+        return _cmd_doctor(args)
     else:
         parser.print_help()
         return 0
@@ -384,6 +403,35 @@ def _cmd_check(args: argparse.Namespace) -> int:
         # strict mode: funciones sin CONTRATO también fallan
         return 1
     return 0
+
+
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    """Comando doctor: autodiagnóstico del ecosistema."""
+    from docpact.checker.doctor import ejecutar
+
+    resultado = ejecutar(args.path, min_score=args.min_score)
+
+    if args.json:
+        import json
+        data = {
+            "checks": [
+                {"nombre": c.nombre, "estado": c.estado,
+                 "mensaje": c.mensaje, "fix": c.fix}
+                for c in resultado.checks
+            ],
+            "score": resultado.score,
+            "ok": resultado.ok,
+        }
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        for c in resultado.checks:
+            icono = "✅" if c.estado else "❌"
+            print(f"{icono} {c.nombre}: {c.mensaje}")
+            if not c.estado and c.fix:
+                print(f"   Fix: {c.fix}")
+        print(f"\n{'✅' if resultado.ok else '❌'} Doctor: {resultado.resumen()}")
+
+    return 0 if resultado.ok else 1
 
 
 def _cmd_mcp(args: argparse.Namespace) -> int:
