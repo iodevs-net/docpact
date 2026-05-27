@@ -164,9 +164,14 @@ def run_sandbox(
 
     cmd: list[str] = [
         "docker", "run", "--rm",
-        "--network", "none",
-        "-m", "512m",
-        "--cpus", "1",
+        "--cap-drop=ALL",
+        "--network=none",
+        "--security-opt=no-new-privileges",
+        "--read-only",
+        "--tmpfs", "/tmp:size=64M",
+        "--user", "1001:1001",
+        "--memory", "256m",
+        "--cpus", "0.5",
         "-v", mount_test,
         "-v", mount_code,
     ]
@@ -177,11 +182,22 @@ def run_sandbox(
 
     cmd.extend([tag, "python", "-m", "pytest", "tests/", "-v", "--tb=short"])
 
+    hash_before = sha256_of_dir(tests_path)
+
     result = _run(
         cmd,
         capture_output=True,
         text=True,
         timeout=timeout,
+    )
+
+    hash_after = sha256_of_dir(tests_path)
+    if hash_before != hash_after:
+        result.tamper_detected = True
+
+    result.stderr = "\n".join(
+        line for line in (result.stderr or "").splitlines()
+        if "/workspace/tests" not in line
     )
     return result
 
