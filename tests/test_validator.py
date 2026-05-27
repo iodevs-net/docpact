@@ -70,3 +70,51 @@ def test_validar_sin_side_effects():
     c = Contrato()
     errores = validar(c)
     assert len(errores) == 0
+
+
+def test_validar_side_effects_demasiado_corto():
+    """Side effect de 1 carácter debe dar error."""
+    c = Contrato(side_effects=[SideEffect("a")])
+    errores = validar(c)
+    assert len(errores) >= 1
+    assert "side_effects" in errores[0].campo
+
+
+def test_validar_input_con_tipo_desconocido():
+    """Input con tipo no estándar debe ser válido (no hay restricción de tipos)."""
+    c = Contrato(
+        side_effects=[SideEffect("ninguno")],
+    )
+    errores = validar(c)
+    assert len(errores) == 0
+
+
+def test_validar_dependencia_con_ruta_absoluta():
+    """Dependencia con ruta absoluta debe ser válida si tiene formato correcto."""
+    c = Contrato(
+        side_effects=[SideEffect("ninguno")],
+        dependencias=[Dependencia(ref="/home/user/proyecto/modulo.py::Funcion")],
+    )
+    errores = validar(c)
+    assert len(errores) == 0
+
+
+def test_validar_solo_rn():
+    """Contrato solo con RN es válido."""
+    c = Contrato(
+        side_effects=[SideEffect("ninguno")],
+        rn=[ReglaNegocio(id="RN-001")],
+    )
+    errores = validar(c)
+    assert len(errores) == 0
+
+
+def test_validar_rn_con_id_demasiado_corto():
+    """RN-XX (solo 2 dígitos) debe ser inválido."""
+    c = Contrato(
+        side_effects=[SideEffect("ninguno")],
+        rn=[ReglaNegocio(id="RN-01")],
+    )
+    errores = validar(c)
+    assert len(errores) >= 1
+    assert "rn" in errores[0].campo
