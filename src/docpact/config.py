@@ -10,7 +10,14 @@ from typing import Any, Optional
 # Patrones por defecto (genéricos — sin referencias a ningún proyecto específico)
 # Los patrones específicos de cada proyecto van en docpact.toml
 PATRONES_DEFECTO: dict[str, list[str]] = {
-    "db_write": [".create", ".save", ".update", ".bulk_create", ".delete", "transaction.atomic"],
+    "db_write": [
+        ".create",
+        ".save",
+        ".update",
+        ".bulk_create",
+        ".delete",
+        "transaction.atomic",
+    ],
     "email": ["send_mail", "EmailMessage"],
     "external": ["requests.", "httpx.", "urllib.request"],
     "audit": ["registrar_evento_bitacora"],
@@ -18,8 +25,14 @@ PATRONES_DEFECTO: dict[str, list[str]] = {
 }
 
 EXCLUIDOS_DEFECTO = {
-    "__pycache__", ".venv", "venv", "node_modules",
-    ".git", "migrations", ".pytest_cache", "__init__.py",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "node_modules",
+    ".git",
+    "migrations",
+    ".pytest_cache",
+    "__init__.py",
 }
 
 
@@ -38,6 +51,7 @@ class DocpactConfig:
         rn_prefix: str = "RN-",
         warnings_suppress: Optional[list[str]] = None,
         rn_patrones: Optional[dict[str, dict[str, str]]] = None,
+        modules: Optional[dict[str, dict]] = None,
     ):
         self.strict = strict
         self.min_score = min_score
@@ -46,6 +60,7 @@ class DocpactConfig:
         self.rn_prefix = rn_prefix
         self.warnings_suppress = warnings_suppress or []
         self.rn_patrones = rn_patrones or {}
+        self.modules = modules or {}
         self._patrones_compilados: Optional[dict[str, list[re.Pattern[str]]]] = None
 
     def debe_suprimir(self, mensaje: str) -> bool:
@@ -98,6 +113,7 @@ class DocpactConfig:
 
         try:
             import tomllib  # type: ignore[import-not-found]
+
             with open(path, "rb") as f:
                 data = tomllib.load(f)
         except (ImportError, tomllib.TOMLDecodeError):
@@ -126,6 +142,22 @@ class DocpactConfig:
             if isinstance(cfg, dict) and "patron" in cfg:
                 rn_patrones[rn_id] = cfg
 
+        # Cargar módulos desde docpact.toml (sección [modules])
+        modules = dict(data.get("modules", {}))
+
+        # Cargar modules.toml desde el mismo directorio (config de proyecto separada)
+        modules_path = path.parent / "modules.toml"
+        if modules_path.exists():
+            try:
+                with open(modules_path, "rb") as f:
+                    modules_data = tomllib.load(f)
+                modules_cfg = dict(modules_data.get("modules", {}))
+                # modules.toml sobreescribe keys del docpact.toml
+                modules_cfg.update(modules)
+                modules = modules_cfg
+            except (tomllib.TOMLDecodeError, Exception):
+                pass
+
         return cls(
             strict=strict,
             min_score=min_score,
@@ -134,6 +166,7 @@ class DocpactConfig:
             rn_prefix=rn_prefix,
             warnings_suppress=warnings_suppress,
             rn_patrones=rn_patrones,
+            modules=modules,
         )
 
 
@@ -145,4 +178,5 @@ def _serializar_config(config: DocpactConfig) -> dict[str, Any]:
         "exclude": sorted(config.exclude),
         "categorias_side_effects": list(config.patrones_side_effects.keys()),
         "rn_prefix": config.rn_prefix,
+        "modulos": list(config.modules.keys()),
     }

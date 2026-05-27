@@ -18,9 +18,14 @@ from pathlib import Path
 from typing import Optional
 
 from docpact.checker.side_effects import check_side_effects
-from docpact.checker.rn_checker import check_rn, extraer_comentarios_desde_fuente, _extraer_ids_rn
+from docpact.checker.rn_checker import (
+    check_rn,
+    extraer_comentarios_desde_fuente,
+    _extraer_ids_rn,
+)
 from docpact.checker.deps_checker import check_deps
 from docpact.checker.import_checker import check_inline_imports
+
 try:
     from docpact.checker.rn_registry_checker import check_rn_against_registry  # type: ignore[import-untyped]
 except ImportError:
@@ -28,7 +33,11 @@ except ImportError:
 from docpact.checker.rn_test_checker import check_rn_tests, check_rn_tests_pasan
 from docpact.config import DocpactConfig
 from docpact.models.contrato import (
-    Contrato, ErrorParser, ReglaNegocio, Dependencia, SideEffect,
+    Contrato,
+    ErrorParser,
+    ReglaNegocio,
+    Dependencia,
+    SideEffect,
 )
 from docpact.parser.extractor import extraer_docstrings
 from docpact.parser.lexer import tokenizar
@@ -36,9 +45,11 @@ from docpact.parser.parser import parsear
 from docpact.parser.ts_parser import extraer_contratos_ts
 from docpact.checker.ts_sidefx import check_side_effects_ts
 
+
 @dataclass
 class Hallazgo:
     """Un hallazgo individual de la verificación."""
+
     tipo: str  # "error" o "warning"
     campo: str
     funcion: str
@@ -56,7 +67,9 @@ class Hallazgo:
         )
 
 
-def _suprimir_hallazgos(hallazgos: list[Hallazgo], config: DocpactConfig) -> list[Hallazgo]:
+def _suprimir_hallazgos(
+    hallazgos: list[Hallazgo], config: DocpactConfig
+) -> list[Hallazgo]:
     """Filtra hallazgos cuyo mensaje coincida con patrones de supresión."""
     if not config.warnings_suppress:
         return hallazgos
@@ -66,6 +79,7 @@ def _suprimir_hallazgos(hallazgos: list[Hallazgo], config: DocpactConfig) -> lis
 @dataclass
 class ResultadoFuncion:
     """Resultado de la verificación de una función."""
+
     nombre: str
     archivo: str
     linea: int
@@ -89,6 +103,7 @@ class ResultadoFuncion:
 @dataclass
 class ResultadoArchivo:
     """Resultado de la verificación de un archivo completo."""
+
     archivo: str
     funciones: list[ResultadoFuncion] = field(default_factory=list)
 
@@ -112,6 +127,7 @@ class ResultadoArchivo:
 @dataclass
 class ResultadoProyecto:
     """Resultado de la verificación de todo el proyecto."""
+
     archivos: list[ResultadoArchivo] = field(default_factory=list)
     config: DocpactConfig = field(default_factory=DocpactConfig)
 
@@ -219,11 +235,11 @@ def check_file(
                         item, str(path), fuente, config, doc_map, resultado
                     )
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            _procesar_funcion(
-                node, str(path), fuente, config, doc_map, resultado
-            )
+            _procesar_funcion(node, str(path), fuente, config, doc_map, resultado)
 
     return resultado
+
+
 def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
     """Verifica un archivo TypeScript/JSX extrayendo CONTRATOS con regex."""
     resultado = ResultadoArchivo(archivo=str(path))
@@ -246,23 +262,25 @@ def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
         )
 
         if not tiene_contrato and config.strict:
-            resultado.funciones.append(ResultadoFuncion(
-                nombre=nombre,
-                archivo=str(path),
-                linea=c.get("linea", 0),
-                tiene_contrato=False,
-                hallazgos=[
-                    Hallazgo(
-                        tipo="error",
-                        campo="presencia",
-                        funcion=nombre,
-                        archivo=str(path),
-                        linea=c.get("linea", 0),
-                        mensaje=f"Función pública '{nombre}' sin CONTRATO",
-                        sugerencia="Agrega un bloque CONTRATO al comentario de la función",
-                    )
-                ],
-            ))
+            resultado.funciones.append(
+                ResultadoFuncion(
+                    nombre=nombre,
+                    archivo=str(path),
+                    linea=c.get("linea", 0),
+                    tiene_contrato=False,
+                    hallazgos=[
+                        Hallazgo(
+                            tipo="error",
+                            campo="presencia",
+                            funcion=nombre,
+                            archivo=str(path),
+                            linea=c.get("linea", 0),
+                            mensaje=f"Función pública '{nombre}' sin CONTRATO",
+                            sugerencia="Agrega un bloque CONTRATO al comentario de la función",
+                        )
+                    ],
+                )
+            )
         elif tiene_contrato:
             hallazgos_ts: list[Hallazgo] = []
             linea_contrato = c.get("linea", 1)
@@ -282,14 +300,16 @@ def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
                 # Inertia router, window.open, fetch pueden no detectarse
                 # por contexto. Usar warning (no error) para evitar falsos
                 # positivos que bloqueen commits.
-                hallazgos_ts.append(Hallazgo(
-                    tipo="warning",
-                    campo="side_effects",
-                    funcion=nombre,
-                    archivo=str(path),
-                    linea=linea_contrato,
-                    mensaje=msg,
-                ))
+                hallazgos_ts.append(
+                    Hallazgo(
+                        tipo="warning",
+                        campo="side_effects",
+                        funcion=nombre,
+                        archivo=str(path),
+                        linea=linea_contrato,
+                        mensaje=msg,
+                    )
+                )
 
             # ── 2. Dependencias ──
             deps = c.get("dependencias", [])
@@ -339,16 +359,18 @@ def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
                             existe = True
                             break
                     if not ruta_rel.exists() and not existe:
-                        hallazgos_ts.append(Hallazgo(
-                            tipo="warning",  # Downgraded to warning since it's often an alias
-                            campo="dependencias",
-                            funcion=nombre,
-                            archivo=str(path),
-                            linea=linea_contrato,
-                            mensaje=f"'{nombre}': dependencia '{dep}' — "
-                                    f"archivo '{modulo_path}' no encontrado",
-                            sugerencia=f"Verifica la ruta (buscado desde {base_dir})",
-                        ))
+                        hallazgos_ts.append(
+                            Hallazgo(
+                                tipo="warning",  # Downgraded to warning since it's often an alias
+                                campo="dependencias",
+                                funcion=nombre,
+                                archivo=str(path),
+                                linea=linea_contrato,
+                                mensaje=f"'{nombre}': dependencia '{dep}' — "
+                                f"archivo '{modulo_path}' no encontrado",
+                                sugerencia=f"Verifica la ruta (buscado desde {base_dir})",
+                            )
+                        )
 
             # ── 3. RN check ──
             rn_list = c.get("rn", [])
@@ -363,6 +385,7 @@ def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
                         comentarios_ts.append(stripped)
                 ids_en_codigo = set()
                 import re as _re
+
                 patron = _re.compile(r"RN-[\w-]+|Gotcha #\d+")
                 for cmt in comentarios_ts:
                     for match in patron.finditer(cmt):
@@ -375,16 +398,18 @@ def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
                     elif isinstance(rn_entry, str):
                         rn_id = rn_entry
                     if rn_id and rn_id not in ids_en_codigo:
-                        hallazgos_ts.append(Hallazgo(
-                            tipo="warning",
-                            campo="rn",
-                            funcion=nombre,
-                            archivo=str(path),
-                            linea=linea_contrato,
-                            mensaje=f"'{nombre}': RN '{rn_id}' declarada pero no encontrada "
-                                    f"como comentario en el código",
-                            sugerencia=f"Agrega '// {rn_id}' en el lugar donde se implementa",
-                        ))
+                        hallazgos_ts.append(
+                            Hallazgo(
+                                tipo="warning",
+                                campo="rn",
+                                funcion=nombre,
+                                archivo=str(path),
+                                linea=linea_contrato,
+                                mensaje=f"'{nombre}': RN '{rn_id}' declarada pero no encontrada "
+                                f"como comentario en el código",
+                                sugerencia=f"Agrega '// {rn_id}' en el lugar donde se implementa",
+                            )
+                        )
 
             # RN test checker para TS: cada RN-XXX debe tener tests/rn/test_rn_XXX.py
             if rn_list:
@@ -401,15 +426,27 @@ def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
                     if ts_root is not None:
                         rn_test_errors_ts = check_rn_tests(ts_rn_ids, ts_root, nombre)
                         for e in rn_test_errors_ts:
-                            hallazgos_ts.append(Hallazgo(tipo="error", campo=e.campo, funcion=nombre, archivo=str(path), linea=linea_contrato, mensaje=e.mensaje, sugerencia=e.sugerencia))
+                            hallazgos_ts.append(
+                                Hallazgo(
+                                    tipo="error",
+                                    campo=e.campo,
+                                    funcion=nombre,
+                                    archivo=str(path),
+                                    linea=linea_contrato,
+                                    mensaje=e.mensaje,
+                                    sugerencia=e.sugerencia,
+                                )
+                            )
             hallazgos_ts = _suprimir_hallazgos(hallazgos_ts, config)
-            resultado.funciones.append(ResultadoFuncion(
-                nombre=nombre,
-                archivo=str(path),
-                linea=linea_contrato,
-                tiene_contrato=True,
-                hallazgos=hallazgos_ts,
-            ))
+            resultado.funciones.append(
+                ResultadoFuncion(
+                    nombre=nombre,
+                    archivo=str(path),
+                    linea=linea_contrato,
+                    tiene_contrato=True,
+                    hallazgos=hallazgos_ts,
+                )
+            )
     return resultado
 
 
@@ -441,15 +478,17 @@ def _procesar_funcion(
             tiene_contrato=False,
         )
         if config.strict:
-            res.hallazgos.append(Hallazgo(
-                tipo="error",
-                campo="presencia",
-                funcion=nombre,
-                archivo=archivo,
-                linea=node.lineno,
-                mensaje=f"Función pública '{nombre}' sin CONTRATO",
-                sugerencia="Agrega un bloque CONTRATO al docstring",
-            ))
+            res.hallazgos.append(
+                Hallazgo(
+                    tipo="error",
+                    campo="presencia",
+                    funcion=nombre,
+                    archivo=archivo,
+                    linea=node.lineno,
+                    mensaje=f"Función pública '{nombre}' sin CONTRATO",
+                    sugerencia="Agrega un bloque CONTRATO al docstring",
+                )
+            )
         resultado.funciones.append(res)
         return
 
@@ -462,7 +501,9 @@ def _procesar_funcion(
     tokens = tokenizar(doc)
     contrato, parse_errors = parsear(tokens)
 
-    hay_contrato = bool(contrato.side_effects or contrato.rn or contrato.input or contrato.output)
+    hay_contrato = bool(
+        contrato.side_effects or contrato.rn or contrato.input or contrato.output
+    )
     # CONTRATO minimal (solo side_effects: ninguno + rn: []) también cuenta
     if not hay_contrato and "CONTRATO:" in doc:
         hay_contrato = True
@@ -489,12 +530,14 @@ def _procesar_funcion(
         return
     elif not hay_contrato:
         # No strict y no hay CONTRATO — lo registramos pero sin error
-        resultado.funciones.append(ResultadoFuncion(
-            nombre=nombre,
-            archivo=archivo,
-            linea=node.lineno,
-            tiene_contrato=False,
-        ))
+        resultado.funciones.append(
+            ResultadoFuncion(
+                nombre=nombre,
+                archivo=archivo,
+                linea=node.lineno,
+                tiene_contrato=False,
+            )
+        )
         return
 
     # Hay CONTRATO — ejecutar verificadores
@@ -502,72 +545,101 @@ def _procesar_funcion(
 
     # Parse errors first
     for pe in parse_errors:
-        hallazgos.append(Hallazgo(
-            tipo="warning",
-            campo=pe.campo,
-            funcion=nombre,
-            archivo=archivo,
-            linea=pe.linea or node.lineno,
-            mensaje=pe.mensaje,
-            sugerencia=pe.sugerencia,
-        ))
+        hallazgos.append(
+            Hallazgo(
+                tipo="warning",
+                campo=pe.campo,
+                funcion=nombre,
+                archivo=archivo,
+                linea=pe.linea or node.lineno,
+                mensaje=pe.mensaje,
+                sugerencia=pe.sugerencia,
+            )
+        )
 
     # Side effects
     se_errores = check_side_effects(node, contrato, config, nombre, archivo)
     for se in se_errores:
-        hallazgos.append(Hallazgo(
-            tipo="error" if "pero se detectaron" in se.mensaje else "warning",
-            campo=se.campo,
-            funcion=nombre,
-            archivo=archivo,
-            linea=se.linea or node.lineno,
-            mensaje=se.mensaje,
-            sugerencia=se.sugerencia,
-        ))
+        hallazgos.append(
+            Hallazgo(
+                tipo="error" if "pero se detectaron" in se.mensaje else "warning",
+                campo=se.campo,
+                funcion=nombre,
+                archivo=archivo,
+                linea=se.linea or node.lineno,
+                mensaje=se.mensaje,
+                sugerencia=se.sugerencia,
+            )
+        )
 
     # RN check — usa la fuente original para extraer comentarios
     rn_errores = _check_rn_con_fuente(node, contrato, fuente, config.rn_prefix, nombre)
     for rn in rn_errores:
-        hallazgos.append(Hallazgo(
-            tipo="warning",
-            campo=rn.campo,
-            funcion=nombre,
-            archivo=archivo,
-            linea=rn.linea or node.lineno,
-            mensaje=rn.mensaje,
-            sugerencia=rn.sugerencia,
-        ))
+        hallazgos.append(
+            Hallazgo(
+                tipo="warning",
+                campo=rn.campo,
+                funcion=nombre,
+                archivo=archivo,
+                linea=rn.linea or node.lineno,
+                mensaje=rn.mensaje,
+                sugerencia=rn.sugerencia,
+            )
+        )
 
     # Dependencias
     deps_errores = check_deps(contrato, archivo, nombre)
     for dep in deps_errores:
-        hallazgos.append(Hallazgo(
-            tipo="error",
-            campo=dep.campo,
-            funcion=nombre,
-            archivo=archivo,
-            linea=dep.linea or node.lineno,
-            mensaje=dep.mensaje,
-            sugerencia=dep.sugerencia,
-        ))
+        hallazgos.append(
+            Hallazgo(
+                tipo="error",
+                campo=dep.campo,
+                funcion=nombre,
+                archivo=archivo,
+                linea=dep.linea or node.lineno,
+                mensaje=dep.mensaje,
+                sugerencia=dep.sugerencia,
+            )
+        )
 
     # Imports inline que duplican dependencias del CONTRATO
     lineas_f = fuente.splitlines()
-    linea_fin_f = getattr(node, 'end_lineno', len(lineas_f))
+    linea_fin_f = getattr(node, "end_lineno", len(lineas_f))
     codigo_funcion = "\n".join(lineas_f[node.lineno - 1 : linea_fin_f])
-    imp_errores = check_inline_imports(codigo_funcion, [d.ref for d in contrato.dependencias], nombre, archivo, node.lineno)
+    imp_errores = check_inline_imports(
+        codigo_funcion,
+        [d.ref for d in contrato.dependencias],
+        nombre,
+        archivo,
+        node.lineno,
+    )
     for imp in imp_errores:
-        hallazgos.append(Hallazgo(tipo="warning", campo=imp.campo, funcion=nombre, archivo=archivo, linea=imp.linea or node.lineno, mensaje=imp.mensaje, sugerencia=imp.sugerencia))
+        hallazgos.append(
+            Hallazgo(
+                tipo="warning",
+                campo=imp.campo,
+                funcion=nombre,
+                archivo=archivo,
+                linea=imp.linea or node.lineno,
+                mensaje=imp.mensaje,
+                sugerencia=imp.sugerencia,
+            )
+        )
 
     # RN patterns — verifica logica real si hay rn_patrones configurados
     if config.rn_patrones and archivo and contrato.rn:
         from pathlib import Path as _P
         from docpact.checker.rn_patterns import verificar_rn_patrones
+
         _errores_patron = verificar_rn_patrones(
-            _P(archivo), codigo_funcion, config.rn_patrones, line_offset=node.lineno,
+            _P(archivo),
+            codigo_funcion,
+            config.rn_patrones,
+            line_offset=node.lineno,
         )
         for ep in _errores_patron:
-                hallazgos.append(Hallazgo(
+            hallazgos.append(
+                Hallazgo(
                     tipo="warning",
                     campo="rn",
                     funcion=nombre,
@@ -575,22 +647,46 @@ def _procesar_funcion(
                     linea=ep.linea,
                     mensaje=ep.mensaje,
                     sugerencia=ep.sugerencia,
-                ))
+                )
+            )
 
     # RN registry check
     from pathlib import Path as _Path
     from typing import Optional as _Optional
+
     # Verificar firma: input/output del CONTRATO vs firma real de Python
     _check_signature(node, contrato, nombre, archivo, hallazgos)
 
     if check_rn_against_registry is not None:
         proyecto_root = _find_project_root(archivo)
         if proyecto_root is not None:
-            rn_reg_errors, rn_reg_infos = check_rn_against_registry(proyecto_root, contrato.rn)
+            rn_reg_errors, rn_reg_infos = check_rn_against_registry(
+                proyecto_root, contrato.rn
+            )
             for e in rn_reg_errors:
-                hallazgos.append(Hallazgo(tipo="error", campo=e.campo, funcion=nombre, archivo=archivo, linea=e.linea or node.lineno, mensaje=e.mensaje, sugerencia=e.sugerencia))
+                hallazgos.append(
+                    Hallazgo(
+                        tipo="error",
+                        campo=e.campo,
+                        funcion=nombre,
+                        archivo=archivo,
+                        linea=e.linea or node.lineno,
+                        mensaje=e.mensaje,
+                        sugerencia=e.sugerencia,
+                    )
+                )
             for i in rn_reg_infos:
-                hallazgos.append(Hallazgo(tipo="info", campo=i.campo, funcion=nombre, archivo=archivo, linea=i.linea or node.lineno, mensaje=i.mensaje, sugerencia=i.sugerencia))
+                hallazgos.append(
+                    Hallazgo(
+                        tipo="info",
+                        campo=i.campo,
+                        funcion=nombre,
+                        archivo=archivo,
+                        linea=i.linea or node.lineno,
+                        mensaje=i.mensaje,
+                        sugerencia=i.sugerencia,
+                    )
+                )
 
     # RN test checker: cada RN-XXX debe tener tests/rn/test_rn_XXX.py
     rn_ids = [r.id for r in contrato.rn]
@@ -599,22 +695,45 @@ def _procesar_funcion(
         if proyecto_root is not None:
             rn_test_errors = check_rn_tests(rn_ids, proyecto_root, nombre)
             for e in rn_test_errors:
-                hallazgos.append(Hallazgo(tipo="error", campo=e.campo, funcion=nombre, archivo=archivo, linea=node.lineno, mensaje=e.mensaje, sugerencia=e.sugerencia))
+                hallazgos.append(
+                    Hallazgo(
+                        tipo="error",
+                        campo=e.campo,
+                        funcion=nombre,
+                        archivo=archivo,
+                        linea=node.lineno,
+                        mensaje=e.mensaje,
+                        sugerencia=e.sugerencia,
+                    )
+                )
             # Verificar que los tests existentes PASEN
             rn_test_fallos = check_rn_tests_pasan(rn_ids, proyecto_root, nombre)
             for e in rn_test_fallos:
-                hallazgos.append(Hallazgo(tipo="error", campo=e.campo, funcion=nombre, archivo=archivo, linea=node.lineno, mensaje=e.mensaje, sugerencia=e.sugerencia))
+                hallazgos.append(
+                    Hallazgo(
+                        tipo="error",
+                        campo=e.campo,
+                        funcion=nombre,
+                        archivo=archivo,
+                        linea=node.lineno,
+                        mensaje=e.mensaje,
+                        sugerencia=e.sugerencia,
+                    )
+                )
 
     hallazgos = _suprimir_hallazgos(hallazgos, config)
 
-    resultado.funciones.append(ResultadoFuncion(
-        nombre=nombre,
-        archivo=archivo,
-        linea=node.lineno,
-        tiene_contrato=True,
-        contrato=contrato,
-        hallazgos=hallazgos,
-    ))
+    resultado.funciones.append(
+        ResultadoFuncion(
+            nombre=nombre,
+            archivo=archivo,
+            linea=node.lineno,
+            tiene_contrato=True,
+            contrato=contrato,
+            hallazgos=hallazgos,
+        )
+    )
+
 
 def _check_rn_con_fuente(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
@@ -629,19 +748,21 @@ def _check_rn_con_fuente(
 
     # Extraer comentarios de la fuente
     linea_inicio = node.lineno
-    linea_fin = getattr(node, 'end_lineno', node.lineno + 50) or (node.lineno + 50)
+    linea_fin = getattr(node, "end_lineno", node.lineno + 50) or (node.lineno + 50)
     comentarios = extraer_comentarios_desde_fuente(fuente, linea_inicio, linea_fin)
     ids_en_codigo = set(_extraer_ids_rn(comentarios, prefix))
 
     errores: list[ErrorParser] = []
     for rn in contrato.rn:
         if rn.id not in ids_en_codigo:
-            errores.append(ErrorParser(
-                "rn",
-                f"'{nombre}': RN '{rn.id}' declarada pero no encontrada "
-                f"como comentario en el código",
-                sugerencia=f"Agrega '# {rn.id}' en el lugar donde se implementa",
-            ))
+            errores.append(
+                ErrorParser(
+                    "rn",
+                    f"'{nombre}': RN '{rn.id}' declarada pero no encontrada "
+                    f"como comentario en el código",
+                    sugerencia=f"Agrega '# {rn.id}' en el lugar donde se implementa",
+                )
+            )
     return errores
 
 
@@ -655,18 +776,25 @@ def _get_changed_files(ruta_base: Path) -> list[Path]:
         Lista de Paths absolutos de archivos modificados.
     """
     import subprocess
+
     try:
         # Staged changes (pre-commit hook context)
         result = subprocess.run(
             ["git", "diff", "--cached", "--name-only"],
-            capture_output=True, text=True, cwd=ruta_base, timeout=10,
+            capture_output=True,
+            text=True,
+            cwd=ruta_base,
+            timeout=10,
         )
         if result.returncode == 0 and result.stdout.strip():
             return [ruta_base / p for p in result.stdout.strip().splitlines()]
         # Unstaged changes (local dev context)
         result = subprocess.run(
             ["git", "diff", "--name-only", "HEAD"],
-            capture_output=True, text=True, cwd=ruta_base, timeout=10,
+            capture_output=True,
+            text=True,
+            cwd=ruta_base,
+            timeout=10,
         )
         if result.returncode == 0 and result.stdout.strip():
             return [ruta_base / p for p in result.stdout.strip().splitlines()]
@@ -723,6 +851,7 @@ def check_proyecto(
         return ResultadoProyecto(config=config)
 
     import concurrent.futures
+
     resultados_archivos: list[ResultadoArchivo] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         futuros = {pool.submit(check_file, a, config): a for a in archivos}
@@ -744,12 +873,38 @@ def check_proyecto(
             for rf in ra.funciones:
                 for ex in _errores_xref:
                     if ex.archivo == ra.archivo:
-                        rf.hallazgos.append(Hallazgo(
-                            tipo="warning", campo="rn",
-                            funcion=rf.nombre, archivo=ex.archivo,
-                            linea=ex.linea, mensaje=ex.mensaje,
-                            sugerencia=ex.sugerencia,
-                        ))
+                        rf.hallazgos.append(
+                            Hallazgo(
+                                tipo="warning",
+                                campo="rn",
+                                funcion=rf.nombre,
+                                archivo=ex.archivo,
+                                linea=ex.linea,
+                                mensaje=ex.mensaje,
+                                sugerencia=ex.sugerencia,
+                            )
+                        )
+
+        # Module boundary check: verificar dependencias entre módulos
+        if config.modules:
+            from docpact.checker.boundary_checker import check_boundary
+
+            _errores_boundary = check_boundary(resultados_archivos, config.modules)
+            for ra in resultado.archivos:
+                for rf in ra.funciones:
+                    for eb in _errores_boundary:
+                        if eb.archivo == ra.archivo and eb.funcion == rf.nombre:
+                            rf.hallazgos.append(
+                                Hallazgo(
+                                    tipo="error",
+                                    campo="dependencias",
+                                    funcion=rf.nombre,
+                                    archivo=eb.archivo,
+                                    linea=rf.linea if hasattr(rf, "linea") else 0,
+                                    mensaje=eb.mensaje,
+                                    sugerencia=eb.sugerencia,
+                                )
+                            )
 
     return resultado
 
@@ -762,8 +917,10 @@ def _check_cross_reference_proyecto(
     if not getattr(config, "rn_patrones", None):
         return []
     from docpact.checker.rn_crossref import (
-        build_funcion_map, verificar_cross_reference,
+        build_funcion_map,
+        verificar_cross_reference,
     )
+
     # Construir mapa de funciones
     fuentes: dict[str, str] = {}
     mapa_funciones: dict[str, dict[str, str]] = {}
@@ -794,10 +951,14 @@ def _check_cross_reference_proyecto(
             codigo = fuentes.get(getattr(ra, "archivo", ""), "")
             if codigo:
                 errs = verificar_cross_reference(
-                    getattr(ra, "archivo", ""), codigo, rn_ids, mapa_funciones,
+                    getattr(ra, "archivo", ""),
+                    codigo,
+                    rn_ids,
+                    mapa_funciones,
                 )
                 errores.extend(errs)
     return errores
+
 
 def _check_signature(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
@@ -808,42 +969,59 @@ def _check_signature(
 ) -> None:
     """Verifica que input/output del CONTRATO coincidan con la firma real."""
     import inspect
+
     # Verificar que input del CONTRATO tenga al menos los parametros de la funcion
-    params_contrato = {c.nombre for c in contrato.input.values()} if contrato.input else set()
-    params_reales = {arg.arg for arg in node.args.args if arg.arg != 'self'}
-    
+    params_contrato = (
+        {c.nombre for c in contrato.input.values()} if contrato.input else set()
+    )
+    params_reales = {arg.arg for arg in node.args.args if arg.arg != "self"}
+
     # Parametros en la firma pero no en el CONTRATO
     if params_reales and contrato.input is not None:
         faltantes = params_reales - params_contrato
         if faltantes:
             for p in sorted(faltantes):
-                hallazgos.append(Hallazgo(
-                    tipo="warning", campo="input",
-                    funcion=nombre, archivo=archivo,
-                    linea=node.lineno,
-                    mensaje=f"Parametro '{p}' en firma de funcion pero no declarado en input del CONTRATO",
-                    sugerencia=f"Agregar '{p}: type — desc' en input del CONTRATO"
-                ))
-    
+                hallazgos.append(
+                    Hallazgo(
+                        tipo="warning",
+                        campo="input",
+                        funcion=nombre,
+                        archivo=archivo,
+                        linea=node.lineno,
+                        mensaje=f"Parametro '{p}' en firma de funcion pero no declarado en input del CONTRATO",
+                        sugerencia=f"Agregar '{p}: type — desc' en input del CONTRATO",
+                    )
+                )
+
     # Verificar output del CONTRATO vs return annotation
-    if contrato.output and hasattr(node, 'returns') and node.returns is not None:
+    if contrato.output and hasattr(node, "returns") and node.returns is not None:
         try:
             return_type = ast.unparse(node.returns)
             contrato_out = contrato.output
-            if contrato_out and contrato_out.lower() not in return_type.lower() and return_type.lower() not in contrato_out.lower():
-                hallazgos.append(Hallazgo(
-                    tipo="info", campo="output",
-                    funcion=nombre, archivo=archivo,
-                    linea=node.lineno,
-                    mensaje=f"Output del CONTRATO ('{contrato_out}') difiere del type hint ('{return_type}')",
-                    sugerencia="Verificar que coincidan o que la diferencia sea intencional"
-                ))
+            if (
+                contrato_out
+                and contrato_out.lower() not in return_type.lower()
+                and return_type.lower() not in contrato_out.lower()
+            ):
+                hallazgos.append(
+                    Hallazgo(
+                        tipo="info",
+                        campo="output",
+                        funcion=nombre,
+                        archivo=archivo,
+                        linea=node.lineno,
+                        mensaje=f"Output del CONTRATO ('{contrato_out}') difiere del type hint ('{return_type}')",
+                        sugerencia="Verificar que coincidan o que la diferencia sea intencional",
+                    )
+                )
         except Exception:
             pass
+
 
 def _find_project_root(archivo: str) -> Optional[Path]:
     """Busca la raiz del proyecto ascendiendo desde un archivo."""
     from pathlib import Path as _Path
+
     path = _Path(archivo).resolve()
     for parent in [path] + list(path.parents):
         reg = parent / "docs" / "reglas-del-negocio" / "REGISTRO.md"
