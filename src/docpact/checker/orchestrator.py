@@ -21,7 +21,10 @@ from docpact.checker.side_effects import check_side_effects
 from docpact.checker.rn_checker import check_rn, extraer_comentarios_desde_fuente, _extraer_ids_rn
 from docpact.checker.deps_checker import check_deps
 from docpact.checker.import_checker import check_inline_imports
-from docpact.checker.rn_registry_checker import check_rn_against_registry
+try:
+    from docpact.checker.rn_registry_checker import check_rn_against_registry
+except ImportError:
+    check_rn_against_registry = None
 from docpact.config import DocpactConfig
 from docpact.models.contrato import Contrato, ErrorParser
 from docpact.parser.extractor import extraer_docstrings
@@ -355,13 +358,14 @@ def _procesar_funcion(
     # RN registry check
     from pathlib import Path as _Path
     from typing import Optional as _Optional
-    proyecto_root = _find_project_root(archivo)
-    if proyecto_root is not None:
-        rn_reg_errors, rn_reg_infos = check_rn_against_registry(proyecto_root, contrato.rn)
-        for e in rn_reg_errors:
-            hallazgos.append(Hallazgo(tipo="error", campo=e.campo, funcion=nombre, archivo=archivo, linea=e.linea or node.lineno, mensaje=e.mensaje, sugerencia=e.sugerencia))
-        for i in rn_reg_infos:
-            hallazgos.append(Hallazgo(tipo="info", campo=i.campo, funcion=nombre, archivo=archivo, linea=i.linea or node.lineno, mensaje=i.mensaje, sugerencia=i.sugerencia))
+    if check_rn_against_registry is not None:
+        proyecto_root = _find_project_root(archivo)
+        if proyecto_root is not None:
+            rn_reg_errors, rn_reg_infos = check_rn_against_registry(proyecto_root, contrato.rn)
+            for e in rn_reg_errors:
+                hallazgos.append(Hallazgo(tipo="error", campo=e.campo, funcion=nombre, archivo=archivo, linea=e.linea or node.lineno, mensaje=e.mensaje, sugerencia=e.sugerencia))
+            for i in rn_reg_infos:
+                hallazgos.append(Hallazgo(tipo="info", campo=i.campo, funcion=nombre, archivo=archivo, linea=i.linea or node.lineno, mensaje=i.mensaje, sugerencia=i.sugerencia))
 
     resultado.funciones.append(ResultadoFuncion(
         nombre=nombre,

@@ -66,7 +66,8 @@ def check_side_effects(
 def _extraer_llamadas(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
     """Extrae todas las llamadas a funciones del cuerpo de una función.
 
-    Retorna strings como 'NotificacionService.notificar', 'Ticket.objects.create',
+    Retorna strings como 'Clase.metodo', 'Modelo.objects.create',
+    'registrar_evento_bitacora', etc.
     'registrar_evento_bitacora', etc.
     """
     llamadas: list[str] = []
@@ -81,12 +82,11 @@ def _extraer_llamadas(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]
     CallVisitor().visit(node)
     return llamadas
 
-
 def _ast_nombre_llamada(func_node: ast.AST) -> Optional[str]:
     """Convierte un nodo AST de función a su nombre como string.
 
-    ast.Attribute (encadenado): NotificacionService.notificar → str
-    ast.Name (simple): registrar_evento_bitacora → str
+    ast.Attribute (encadenado): obj.method → str
+    ast.Name (simple): nombre_funcion → str
     """
     if isinstance(func_node, ast.Attribute):
         # Llamada encadenada: obj.method

@@ -7,21 +7,14 @@ from pathlib import Path
 from typing import Any, Optional
 
 
-# Patrones por defecto (documentados en the-agent-code-manifesto)
+# Patrones por defecto (genéricos — sin referencias a ningún proyecto específico)
+# Los patrones específicos de cada proyecto van en docpact.toml
 PATRONES_DEFECTO: dict[str, list[str]] = {
-    # Sin paréntesis — el AST walker extrae nombres de función, no código fuente
     "db_write": [".create", ".save", ".update", ".bulk_create", ".delete", "transaction.atomic"],
-    "email": ["send_mail", "EmailMessage", "_enviar_email", "enviar_email_async"],
+    "email": ["send_mail", "EmailMessage"],
     "external": ["requests.", "httpx.", "urllib.request"],
-    "audit": [
-        "BitacoraEntry.objects.create", "AuditService.log",
-        "registrar_evento_bitacora",
-    ],
-    "notification": [
-        "NotificacionService.", "_notificar_", "notificar_",
-        "_notificar_inicio_trabajo",
-    ],
-    "sesion": ["SesionTrabajo.objects.", "SessionService.", "iniciar_sesion", "detener_sesion"],
+    "audit": ["registrar_evento_bitacora"],
+    "notification": ["_notificar_", "notificar_"],
 }
 
 EXCLUIDOS_DEFECTO = {
