@@ -564,7 +564,7 @@ def _procesar_funcion(
     from typing import Optional as _Optional
     # Verificar firma: input/output del CONTRATO vs firma real de Python
     _check_signature(node, contrato, nombre, archivo, hallazgos)
-    
+
     if check_rn_against_registry is not None:
         proyecto_root = _find_project_root(archivo)
         if proyecto_root is not None:

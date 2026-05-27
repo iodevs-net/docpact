@@ -247,7 +247,27 @@ def _print_contrato_texto(r: dict) -> None:
     se = c["side_effects"]
     print(f"  side_effects: {', '.join(se) if se else 'ninguno'}")
     if c["rn"]:
-        print(f"  rn: {', '.join(r['id'] for r in c['rn'])}")
+        rn_ids = [r.get("id", "") for r in c["rn"]]
+        print(f"  rn: {', '.join(rn_ids)}")
+        # Mostrar descripciones desde REGISTRO.md
+        _cargadas = set()
+        try:
+            from docpact.checker.rn_registry import cargar_registro
+            from pathlib import Path
+            _path = Path(r["archivo"]).resolve()
+            _root = None
+            for _p in [_path] + list(_path.parents):
+                if (_p / "docs" / "reglas-del-negocio" / "REGISTRO.md").exists():
+                    _root = _p
+                    break
+            if _root:
+                _reg = cargar_registro(_root)
+                for rn_id in rn_ids:
+                    if rn_id in _reg and rn_id not in _cargadas:
+                        print(f"     📋 {rn_id}: {_reg[rn_id]}")
+                        _cargadas.add(rn_id)
+        except Exception:
+            pass
     if c.get("errores"):
         for e in c["errores"]:
             msg = f"  ⚠️  [{e['campo']}] {e['mensaje']}"
@@ -323,6 +343,14 @@ def _cmd_check(args: argparse.Namespace) -> int:
         if _omitidos > 0:
             print(f"⏭️  {_omitidos} funciones omitidas (tienen docstring sin CONTRATO, usa --force en init)")
 
+    # Cargar registro RN para enriquecer reporte
+    _rn_registro: dict[str, str] = {}
+    try:
+        from docpact.checker.rn_registry import cargar_registro
+        _rn_registro = cargar_registro(args.path)
+    except Exception:
+        pass
+
     # Mostrar hallazgos detallados
     if args.report or te > 0 or tw > 0:
         for archivo_result in resultado.archivos:
@@ -333,6 +361,10 @@ def _cmd_check(args: argparse.Namespace) -> int:
                         loc = f"{archivo_result.archivo}::{h.funcion}:{h.linea}"
                         print(f"\n{icono} {loc}")
                         print(f"   {h.mensaje}")
+                        # Enriquecer RN con descripcion desde REGISTRO.md
+                        for rn_id, rn_desc in _rn_registro.items():
+                            if rn_id in h.mensaje:
+                                print(f"   📋 {rn_id}: {rn_desc}")
                         if h.sugerencia:
                             print(f"   💡 {h.sugerencia}")
                     if not func.errores and not func.warnings:
