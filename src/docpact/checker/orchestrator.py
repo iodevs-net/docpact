@@ -25,6 +25,7 @@ try:
     from docpact.checker.rn_registry_checker import check_rn_against_registry  # type: ignore[import-untyped]
 except ImportError:
     check_rn_against_registry = None
+from docpact.checker.rn_test_checker import check_rn_tests
 from docpact.config import DocpactConfig
 from docpact.models.contrato import (
     Contrato, ErrorParser, ReglaNegocio, Dependencia, SideEffect,
@@ -346,6 +347,22 @@ def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
                             sugerencia=f"Agrega '// {rn_id}' en el lugar donde se implementa",
                         ))
 
+            # RN test checker para TS: cada RN-XXX debe tener tests/rn/test_rn_XXX.py
+            if rn_list:
+                ts_rn_ids = []
+                for rn_entry in rn_list:
+                    if isinstance(rn_entry, dict):
+                        rid = rn_entry.get("id", "")
+                        if rid:
+                            ts_rn_ids.append(rid)
+                    elif isinstance(rn_entry, str):
+                        ts_rn_ids.append(rn_entry)
+                if ts_rn_ids:
+                    ts_root = _find_project_root(str(path))
+                    if ts_root is not None:
+                        rn_test_errors_ts = check_rn_tests(ts_rn_ids, ts_root, nombre)
+                        for e in rn_test_errors_ts:
+                            hallazgos_ts.append(Hallazgo(tipo="error", campo=e.campo, funcion=nombre, archivo=str(path), linea=linea_contrato, mensaje=e.mensaje, sugerencia=e.sugerencia))
             resultado.funciones.append(ResultadoFuncion(
                 nombre=nombre,
                 archivo=str(path),
@@ -514,6 +531,15 @@ def _procesar_funcion(
             for i in rn_reg_infos:
                 hallazgos.append(Hallazgo(tipo="info", campo=i.campo, funcion=nombre, archivo=archivo, linea=i.linea or node.lineno, mensaje=i.mensaje, sugerencia=i.sugerencia))
 
+    # RN test checker: cada RN-XXX debe tener tests/rn/test_rn_XXX.py
+    rn_ids = [r.id for r in contrato.rn]
+    if rn_ids:
+        proyecto_root = _find_project_root(archivo)
+        if proyecto_root is not None:
+            rn_test_errors = check_rn_tests(rn_ids, proyecto_root, nombre)
+            for e in rn_test_errors:
+                hallazgos.append(Hallazgo(tipo="error", campo=e.campo, funcion=nombre, archivo=archivo, linea=node.lineno, mensaje=e.mensaje, sugerencia=e.sugerencia))
+
     resultado.funciones.append(ResultadoFuncion(
         nombre=nombre,
         archivo=archivo,
@@ -522,7 +548,6 @@ def _procesar_funcion(
         contrato=contrato,
         hallazgos=hallazgos,
     ))
-
 
 def _check_rn_con_fuente(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
