@@ -208,7 +208,8 @@ def check_file(
 
     doc_map: dict[str, tuple[int, str, str]] = {}
     for linea, nombre, tipo, doc in doc_funciones:
-        doc_map[nombre] = (linea, tipo, doc)
+        # Usar (nombre, linea) para evitar colisiones con métodos sobrecargados
+        doc_map[f"{nombre}:{linea}"] = (linea, tipo, doc)
 
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.ClassDef):
@@ -428,7 +429,7 @@ def _procesar_funcion(
         return
 
     # Obtener docstring
-    info = doc_map.get(nombre)
+    info = doc_map.get(f"{nombre}:{node.lineno}")
     tiene_doc = info is not None
 
     if not tiene_doc:
