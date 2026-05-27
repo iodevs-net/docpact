@@ -26,7 +26,9 @@ try:
 except ImportError:
     check_rn_against_registry = None
 from docpact.config import DocpactConfig
-from docpact.models.contrato import Contrato, ErrorParser
+from docpact.models.contrato import (
+    Contrato, ErrorParser, ReglaNegocio, Dependencia, SideEffect,
+)
 from docpact.parser.extractor import extraer_docstrings
 from docpact.parser.lexer import tokenizar
 from docpact.parser.parser import parsear
@@ -213,16 +215,17 @@ def check_file(
             )
 
     return resultado
-
-
 def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
     """Verifica un archivo TypeScript/JSX extrayendo CONTRATOS con regex."""
     resultado = ResultadoArchivo(archivo=str(path))
 
     try:
         contratos = extraer_contratos_ts(str(path))
+        fuente = path.read_text(encoding="utf-8")
     except (FileNotFoundError, UnicodeDecodeError):
         return resultado
+
+    lineas_fn = fuente.splitlines()
 
     for c in contratos:
         nombre = c.get("nombre_funcion", "")
@@ -252,11 +255,12 @@ def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
                 ],
             ))
         elif tiene_contrato:
-            # Leer codigo fuente y verificar side_effects
+            hallazgos_ts: list[Hallazgo] = []
+            linea_contrato = c.get("linea", 1)
+
+            # ── 1. Side effects ──
             try:
-                lineas_fn = path.read_text(encoding="utf-8").splitlines()
-                # Desde la linea del CONTRATO hasta fin de archivo o proximo CONTRATO
-                inicio = c.get("linea", 1) - 1
+                inicio = linea_contrato - 1
                 codigo_fn = "\n".join(lineas_fn[inicio:])
                 se_declarados = c.get("side_effects", [])
                 if isinstance(se_declarados, str):
@@ -264,22 +268,88 @@ def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
                 err_sidefx = check_side_effects_ts(codigo_fn, se_declarados)
             except Exception:
                 err_sidefx = []
-
-            hallazgos_ts = []
             for msg in err_sidefx:
                 hallazgos_ts.append(Hallazgo(
                     tipo="error",
                     campo="side_effects",
                     funcion=nombre,
                     archivo=str(path),
-                    linea=c.get("linea", 0),
+                    linea=linea_contrato,
                     mensaje=msg,
                 ))
+
+            # ── 2. Dependencias ──
+            deps = c.get("dependencias", [])
+            if isinstance(deps, list):
+                for dep in deps:
+                    dep = dep.strip()
+                    if not dep:
+                        continue
+                    # Separar modulo y simbolo
+                    if "::" in dep:
+                        modulo_path, _simbolo = dep.split("::", 1)
+                    else:
+                        modulo_path = dep
+                    # Resolver contra directorio del archivo actual
+                    base_dir = path.parent
+                    ruta_rel = base_dir / modulo_path
+                    existe = False
+                    for ext in (".py", ".ts", ".tsx", ".jsx"):
+                        if ruta_rel.with_suffix(ext).exists():
+                            existe = True
+                            break
+                    if not ruta_rel.exists() and not existe:
+                        hallazgos_ts.append(Hallazgo(
+                            tipo="error",
+                            campo="dependencias",
+                            funcion=nombre,
+                            archivo=str(path),
+                            linea=linea_contrato,
+                            mensaje=f"'{nombre}': dependencia '{dep}' — "
+                                    f"archivo '{modulo_path}' no encontrado",
+                            sugerencia=f"Verifica la ruta (buscado desde {base_dir})",
+                        ))
+
+            # ── 3. RN check ──
+            rn_list = c.get("rn", [])
+            if isinstance(rn_list, list):
+                # Extraer comentarios // RN-XXX del codigo fuente
+                comentarios_ts: list[str] = []
+                # Buscar desde la linea del CONTRATO hasta fin del archivo
+                from_i = max(0, linea_contrato - 1)
+                for l in lineas_fn[from_i:]:
+                    stripped = l.strip()
+                    if "RN-" in stripped or "Gotcha" in stripped:
+                        comentarios_ts.append(stripped)
+                ids_en_codigo = set()
+                import re as _re
+                patron = _re.compile(r"RN-[\w-]+|Gotcha #\d+")
+                for cmt in comentarios_ts:
+                    for match in patron.finditer(cmt):
+                        ids_en_codigo.add(match.group())
+
+                for rn_entry in rn_list:
+                    rn_id = ""
+                    if isinstance(rn_entry, dict):
+                        rn_id = rn_entry.get("id", "")
+                    elif isinstance(rn_entry, str):
+                        rn_id = rn_entry
+                    if rn_id and rn_id not in ids_en_codigo:
+                        hallazgos_ts.append(Hallazgo(
+                            tipo="warning",
+                            campo="rn",
+                            funcion=nombre,
+                            archivo=str(path),
+                            linea=linea_contrato,
+                            mensaje=f"'{nombre}': RN '{rn_id}' declarada pero no encontrada "
+                                    f"como comentario en el código",
+                            sugerencia=f"Agrega '// {rn_id}' en el lugar donde se implementa",
+                        ))
 
             resultado.funciones.append(ResultadoFuncion(
                 nombre=nombre,
                 archivo=str(path),
-                linea=c.get("linea", 0),
+                linea=linea_contrato,
                 tiene_contrato=True,
                 hallazgos=hallazgos_ts,
             ))
