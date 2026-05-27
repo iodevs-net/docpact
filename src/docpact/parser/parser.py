@@ -15,6 +15,8 @@ from docpact.models.contrato import (
     ReglaNegocio,
     SideEffect,
 )
+from typing import Any
+
 from docpact.parser.lexer import TipoToken, Token
 
 
@@ -74,7 +76,7 @@ def parsear(tokens: list[Token]) -> tuple[Contrato, list[ErrorParser]]:
                         rn_list.append(ReglaNegocio(id=str(item)))
                 elif datos_extra["campo"] == "borde":
                     for item in datos_extra["items"]:
-                        borde_list.append(CasoBorde(condicion=str(item)))
+                        borde_list.append(CasoBorde(condicion=str(item), comportamiento="" if isinstance(item, str) else str(item.get("comportamiento", ""))))
                 elif datos_extra["campo"] == "dependencias":
                     for item in datos_extra["items"]:
                         deps_list.append(Dependencia(ref=str(item)))
@@ -98,7 +100,7 @@ def _parsear_campo_simple(
     token: Token,
     idx: int,
     errores: list[ErrorParser],
-) -> tuple[int, list[SideEffect] | None, str | None, str, dict | None]:
+    ) -> tuple[int, list[SideEffect] | None, str | None, str, dict[str, Any] | None]:
     """Parsea 'side_effects: valor', 'output: type — desc', o arrays JSON inline.
 
     Arrays JSON inline: rn: [RN-001], dependencias: ["a.py::X"]
@@ -151,13 +153,13 @@ def _parsear_campo_compuesto(
     idx: int,
     campo: str,
     errores: list[ErrorParser],
-) -> tuple[int, dict]:
+    ) -> tuple[int, dict[str, Any]]:
     """Parsea un campo compuesto (input, rn, borde, dependencias).
 
     Returns:
         (idx_siguiente, dict_resultado)
     """
-    resultado: dict[str, list] = {
+    resultado: dict[str, Any] = {
         "input": [],
         "rn": [],
         "borde": [],
@@ -193,7 +195,7 @@ def _parsear_campo_compuesto(
 
 def _procesar_input(
     token: Token,
-    resultado: dict,
+    resultado: dict[str, Any],
     errores: list[ErrorParser],
 ) -> None:
     """Procesa 'param_name: type — description'."""
@@ -225,7 +227,7 @@ def _procesar_input(
 def _procesar_item_lista(
     campo: str,
     token: Token,
-    resultado: dict,
+    resultado: dict[str, Any],
     errores: list[ErrorParser],
 ) -> None:
     """Procesa '- item' dentro de rn, borde, dependencias."""
@@ -262,7 +264,7 @@ def _procesar_item_lista(
 
 def _fusionar_resultados(
     campo: str,
-    datos: dict,
+    datos: dict[str, Any],
     input_fields: dict[str, CampoInput],
     rn_list: list[ReglaNegocio],
     borde_list: list[CasoBorde],

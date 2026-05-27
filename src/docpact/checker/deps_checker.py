@@ -90,7 +90,7 @@ def _resolver_ruta(modulo_path: str, base_dir: Path) -> Path:
             break
     else:
         # Si no encontramos .git, probar con la raíz del archivo
-        bases_a_probar.append(base_dir.root)
+        bases_a_probar.append(Path(base_dir.root))
 
     for base in bases_a_probar:
         for variante in [ruta, ruta.with_suffix(".py")]:

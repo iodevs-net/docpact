@@ -22,7 +22,7 @@ from docpact.checker.rn_checker import check_rn, extraer_comentarios_desde_fuent
 from docpact.checker.deps_checker import check_deps
 from docpact.checker.import_checker import check_inline_imports
 try:
-    from docpact.checker.rn_registry_checker import check_rn_against_registry
+    from docpact.checker.rn_registry_checker import check_rn_against_registry  # type: ignore[import-untyped]
 except ImportError:
     check_rn_against_registry = None
 from docpact.config import DocpactConfig
@@ -396,6 +396,9 @@ def _procesar_funcion(
         resultado.funciones.append(res)
         return
 
+    if info is None:
+        return
+
     _, _, doc = info
 
     # Parsear CONTRATO del docstring
@@ -600,7 +603,13 @@ def check_proyecto(
     resultado.archivos = resultados_archivos
     return resultado
 
-def _check_signature(node, contrato, nombre, archivo, hallazgos):
+def _check_signature(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    contrato: Contrato,
+    nombre: str,
+    archivo: str,
+    hallazgos: list[Hallazgo],
+) -> None:
     """Verifica que input/output del CONTRATO coincidan con la firma real."""
     import inspect
     # Verificar que input del CONTRATO tenga al menos los parametros de la funcion
@@ -636,7 +645,7 @@ def _check_signature(node, contrato, nombre, archivo, hallazgos):
         except Exception:
             pass
 
-def _find_project_root(archivo: str):
+def _find_project_root(archivo: str) -> Optional[Path]:
     """Busca la raiz del proyecto ascendiendo desde un archivo."""
     from pathlib import Path as _Path
     path = _Path(archivo).resolve()

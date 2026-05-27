@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 # ─── expresión regular para campos simples ──────────────────
 
@@ -41,7 +41,7 @@ _RE_ITEM_BORDE = re.compile(
 _RE_CONTRATO_INICIO = re.compile(r"CONTRATO\s*:")
 
 
-def extraer_contratos_ts(archivo: str) -> list[dict]:
+def extraer_contratos_ts(archivo: str) -> list[dict[str, Any]]:
     """Extrae bloques CONTRATO de comentarios TypeScript/JSX.
 
     Args:
@@ -62,7 +62,7 @@ def extraer_contratos_ts(archivo: str) -> list[dict]:
     lineas = path.read_text(encoding="utf-8").splitlines(keepends=False)
 
     bloques = _encontrar_bloques(lineas)
-    contratos: list[dict] = []
+    contratos: list[dict[str, Any]] = []
 
     for linea_inicio, bloque in bloques:
         contrato = _parsear_bloque(bloque)
@@ -156,7 +156,7 @@ def _limpiar_multi(linea: str) -> str:
 # ─── parseo del contenido del bloque ────────────────────────
 
 
-def _parsear_bloque(bloque: list[str]) -> Optional[dict]:
+def _parsear_bloque(bloque: list[str]) -> Optional[dict[str, Any]]:
     """Parsea un bloque de líneas limpias y extrae los campos CONTRATO.
 
     Devuelve un dict con input, output, side_effects, rn, borde, dependencias,
@@ -169,7 +169,7 @@ def _parsear_bloque(bloque: list[str]) -> Optional[dict]:
         return None
 
     # Estado del parseo
-    resultado: dict = {
+    resultado: dict[str, Any] = {
         "input": {},
         "output": None,
         "side_effects": [],

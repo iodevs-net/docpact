@@ -42,10 +42,10 @@ class DocpactConfig:
         self.exclude = exclude or EXCLUIDOS_DEFECTO
         self.patrones_side_effects = patrones_side_effects or PATRONES_DEFECTO
         self.rn_prefix = rn_prefix
-        self._patrones_compilados: Optional[dict[str, list[re.Pattern]]] = None
+        self._patrones_compilados: Optional[dict[str, list[re.Pattern[str]]]] = None
 
     @property
-    def patrones_compilados(self) -> dict[str, list[re.Pattern]]:
+    def patrones_compilados(self) -> dict[str, list[re.Pattern[str]]]:
         """Patrones compilados por categoría para matching rápido."""
         if self._patrones_compilados is None:
             self._patrones_compilados = {}
@@ -84,7 +84,7 @@ class DocpactConfig:
             return cls()
 
         try:
-            import tomllib
+            import tomllib  # type: ignore[import-not-found]
             with open(path, "rb") as f:
                 data = tomllib.load(f)
         except (ImportError, tomllib.TOMLDecodeError):
@@ -113,7 +113,7 @@ class DocpactConfig:
         )
 
 
-def _serializar_config(config: DocpactConfig) -> dict:
+def _serializar_config(config: DocpactConfig) -> dict[str, Any]:
     """Serializa la config para reportes."""
     return {
         "strict": config.strict,

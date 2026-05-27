@@ -42,3 +42,25 @@ addopts = "-v --cov=src/docpact --cov-report=term-missing"
 
 [tool.coverage.run]
 source = ["src/docpact"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+show_error_codes = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = "docpact.cli.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "docpact.mcp_server"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "docpact.runner"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true

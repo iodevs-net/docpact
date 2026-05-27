@@ -16,7 +16,7 @@ Uso desde agente (MCP):
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from docpact.checker.orchestrator import (
     check_file as _check_file,
@@ -80,7 +80,7 @@ def check_proyecto(
 def extract_contratos(
     path: str | Path,
     incluir_privadas: bool = False,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Extrae todos los CONTRATOS de un archivo o directorio.
 
     Args:
