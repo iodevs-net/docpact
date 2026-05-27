@@ -294,9 +294,18 @@ def _insertar_contrato_en_docstring(
             doc_lines.append(indent + bloque_linea)
         doc_lines.append(f'{indent}"""')
 
-        # Insertar antes del primer statement del cuerpo (después del signature)
-        # node.body[0].lineno es 1-based; restamos 1 para convertir a 0-based
-        insert_line = node.body[0].lineno - 1  # índice 0-based antes del primer statement
+        # Insertar después de la firma de la función (antes del body)
+        # Para funciones de una línea (def foo(): return x), hay que dividir la línea
+        if node.body[0].lineno == node.lineno:
+            # One-liner: separar def del body en dos líneas
+            def_line = lineas[node.lineno - 1]
+            # Extraer signature (todo hasta ":") y body (después de "return ")
+            sig, _, body_part = def_line.partition(": ")
+            lineas[node.lineno - 1] = sig + ":"
+            # Insertar el body después del docstring
+            body_indent = indent  # misma indent que el docstring
+            doc_lines.append(f'{body_indent}{body_part}')
+        insert_line = node.lineno  # después de la línea def (0-based)
         doc_lines.reverse()
         for dl in doc_lines:
             lineas.insert(insert_line, dl)
