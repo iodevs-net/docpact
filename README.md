@@ -22,19 +22,24 @@ Score: 70/100 — L2 (AI-Friendly)
 
 **MVP funcional.** El core está sólido y ya se usa en producción en ioDesk-3.
 
+**v0.4.2 — mypy strict + TypeScript CONTRATOS + sidefx checker.** 
+El core está sólido y ya se usa en producción en ioDesk-3.
+
 | Componente | Estado |
 |------------|--------|
 | Parser de CONTRATOS (Python) | ✅ Listo |
+| Parser de CONTRATOS (TypeScript/JSX) | ✅ Listo |
 | `docpact check` — side_effects vs AST | ✅ Listo |
+| `docpact check` — side_effects TS | ✅ Listo |
 | `docpact check` — RN-XXX en comentarios | ✅ Listo |
 | `docpact check` — dependencias existen | ✅ Listo |
-| `docpact extract` | ✅ Listo |
+| `docpact check` — strict mode (Python + TS) | ✅ Listo |
+| `docpact extract` (Python + TypeScript) | ✅ Listo |
 | API Python (`docpact.api`) | ✅ Listo |
 | MCP server para agentes | ✅ Listo |
-| Procesamiento paralelo | ✅ Listo |
-| 60 tests, cobertura 70% | ✅ Listo |
+| mypy --strict (0 errores) | ✅ Listo |
+| 119 tests, cobertura 56% | ✅ Listo |
 | `docpact init` — generar CONTRATOS | ⏳ No |
-| Integración mypy | ⏳ No |
 | Output SARIF | ⏳ No |
 | Verificación cross-file | ⏳ No |
 
@@ -127,19 +132,37 @@ def sumar_sesiones(tickets: list[Ticket]) -> HorasCalculadas:
 4. **Campos opcionales:** `input`, `output`, `borde`.
 
 ---
-
 ## Qué verifica docpact
 
 | Verificación | Método | ¿Qué pasa si falla? |
 |---|---|---|
 | `side_effects: ninguno` pero hay llamadas reales | AST walker busca patrones de `.create`, `send_mail`, etc. | ❌ Error |
-| Dependencia apunta a archivo/símbolo que no existe | `ast.walk` + resolución de rutas | ❌ Error |
+| Dependencia apunta a archivo/símbolo que no existe | Resolución de rutas + validación simbólica | ❌ Error |
 | strict: función pública sin CONTRATO | Detecta funciones sin bloque CONTRATO | ❌ Error |
-| RN-XXX declarada sin `# RN-XXX` en el cuerpo | Extrae comentarios de la fuente | ⚠️ Warning |
+| RN-XXX declarada sin `// RN-XXX` en el cuerpo | Extrae comentarios de la fuente | ⚠️ Warning |
+| TypeScript: side_effects no declarados | Regex sobre patrones `api.post`, `fetch(`, etc. | ❌ Error |
+| TypeScript: dependencia faltante | Resolución con .ts/.tsx/.jsx extensiones | ❌ Error |
 
-**Limitación conocida:** El AST walker busca strings literales (`".create"`, `"send_mail"`).
-No detecta llamadas dinámicas como `getattr(Model, 'create')()` o `Model.objects. create()` con espacio.
-Para el uso esperado (agentes que escriben código directo, no ofuscado) es suficiente.
+### Limitaciones conocidas
+
+1. **AST walker (Python):** Busca strings literales (`".create"`, `"send_mail"`).
+   No detecta `getattr(Model, 'create')()` ni otras formas dinámicas.
+   Para agentes que escriben código directo es suficiente.
+
+2. **Parser TypeScript:** Usa regex, no AST. No detecta funciones sin CONTRATO
+   (solo verifica lo que está comentado explícitamente). No verifica tipos TS
+   (eso lo hace el compilador TypeScript).
+
+3. **Side effects en TypeScript:** Detecta patrones comunes
+   (`api.post`, `fetch(`, `axios.`, `.create()`). Cubre ~80% de casos reales.
+   No detecta llamadas dinámicas ni métodos con nombres poco comunes.
+
+4. **RN checker en TypeScript:** Busca `RN-XXX` en el código fuente.
+   Requiere que la RN se mencione como `// RN-XXX` en un comentario.
+   No verifica que la regla esté realmente implementada.
+
+5. **Coverage:** 56% actual. CLI, MCP server, y sandbox runner tienen 0%
+   por su naturaleza de interacción con el sistema operativo.
 
 ---
 
