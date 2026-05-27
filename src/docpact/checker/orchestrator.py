@@ -612,16 +612,25 @@ def _check_rn_con_fuente(
 def _get_changed_files(ruta_base: Path) -> list[Path]:
     """Obtiene archivos modificados via git diff.
 
+    Orden: staged first (pre-commit), luego unstaged (local dev).
+    Retorna vacía si no hay cambios o no es repo git.
+
     Returns:
-        Lista de Paths relativos a ruta_base de archivos modificados.
-        Vacía si no es un repo git o si no hay cambios.
+        Lista de Paths absolutos de archivos modificados.
     """
     import subprocess
     try:
+        # Staged changes (pre-commit hook context)
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            capture_output=True, text=True, cwd=ruta_base, timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return [ruta_base / p for p in result.stdout.strip().splitlines()]
+        # Unstaged changes (local dev context)
         result = subprocess.run(
             ["git", "diff", "--name-only", "HEAD"],
-            capture_output=True, text=True, cwd=ruta_base,
-            timeout=10,
+            capture_output=True, text=True, cwd=ruta_base, timeout=10,
         )
         if result.returncode == 0 and result.stdout.strip():
             return [ruta_base / p for p in result.stdout.strip().splitlines()]
@@ -669,11 +678,10 @@ def check_proyecto(
     # Filtrar solo archivos modificados si diff_only está activo
     if diff_only:
         changed = _get_changed_files(ruta)
-        if changed:
-            changed_set = set(p.resolve() for p in changed)
-            archivos = [a for a in archivos if a.resolve() in changed_set]
-        # Si no hay cambios o el git diff falla, continuar con archivos filtrados
-        # (puede quedar vacío → resultado vacío = OK)
+        if not changed:
+            return ResultadoProyecto(config=config)
+        changed_set = set(p.resolve() for p in changed)
+        archivos = [a for a in archivos if a.resolve() in changed_set]
 
     if not archivos:
         return ResultadoProyecto(config=config)
