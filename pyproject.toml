@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "docpact"
-version = "0.2.1"
+version = "0.2.2"
 description = "Verificador de CONTRATOS en código — sincroniza docstrings con implementación real"
 authors = [
     { name = "ioDesk Team", email = "dev@iodesk.io" },

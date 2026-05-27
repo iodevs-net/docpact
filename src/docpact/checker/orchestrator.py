@@ -358,6 +358,9 @@ def _procesar_funcion(
     # RN registry check
     from pathlib import Path as _Path
     from typing import Optional as _Optional
+    # Verificar firma: input/output del CONTRATO vs firma real de Python
+    _check_signature(node, contrato, nombre, archivo, hallazgos)
+    
     if check_rn_against_registry is not None:
         proyecto_root = _find_project_root(archivo)
         if proyecto_root is not None:
@@ -451,6 +454,42 @@ def check_proyecto(
     resultado = ResultadoProyecto(config=config)
     resultado.archivos = resultados_archivos
     return resultado
+
+def _check_signature(node, contrato, nombre, archivo, hallazgos):
+    """Verifica que input/output del CONTRATO coincidan con la firma real."""
+    import inspect
+    # Verificar que input del CONTRATO tenga al menos los parametros de la funcion
+    params_contrato = {c.nombre for c in contrato.input.values()} if contrato.input else set()
+    params_reales = {arg.arg for arg in node.args.args if arg.arg != 'self'}
+    
+    # Parametros en la firma pero no en el CONTRATO
+    if params_reales and contrato.input is not None:
+        faltantes = params_reales - params_contrato
+        if faltantes:
+            for p in sorted(faltantes):
+                hallazgos.append(Hallazgo(
+                    tipo="warning", campo="input",
+                    funcion=nombre, archivo=archivo,
+                    linea=node.lineno,
+                    mensaje=f"Parametro '{p}' en firma de funcion pero no declarado en input del CONTRATO",
+                    sugerencia=f"Agregar '{p}: type — desc' en input del CONTRATO"
+                ))
+    
+    # Verificar output del CONTRATO vs return annotation
+    if contrato.output and hasattr(node, 'returns') and node.returns is not None:
+        try:
+            return_type = ast.unparse(node.returns)
+            contrato_out = contrato.output
+            if contrato_out and contrato_out.lower() not in return_type.lower() and return_type.lower() not in contrato_out.lower():
+                hallazgos.append(Hallazgo(
+                    tipo="info", campo="output",
+                    funcion=nombre, archivo=archivo,
+                    linea=node.lineno,
+                    mensaje=f"Output del CONTRATO ('{contrato_out}') difiere del type hint ('{return_type}')",
+                    sugerencia="Verificar que coincidan o que la diferencia sea intencional"
+                ))
+        except Exception:
+            pass
 
 def _find_project_root(archivo: str):
     """Busca la raiz del proyecto ascendiendo desde un archivo."""
