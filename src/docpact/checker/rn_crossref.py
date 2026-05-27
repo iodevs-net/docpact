@@ -14,6 +14,7 @@ from typing import NamedTuple
 
 class RNCrossError(NamedTuple):
     """Error de cross-reference RN no propagada."""
+
     archivo: str
     linea: int
     mensaje: str
@@ -30,9 +31,24 @@ def _extraer_llamadas(codigo: str) -> set[str]:
     for m in _CALL_RE.finditer(codigo):
         nombre = m.group(1)
         # Saltar palabras reservadas de Python
-        if nombre in ("if", "for", "while", "with", "not", "and", "or", "in",
-                       "is", "assert", "raise", "return", "yield", "del",
-                       "elif", "except", "finally", "try", "except", "lambda"):
+        if nombre in (
+            "if", "for", "while", "with", "not", "and", "or", "in",
+            "is", "assert", "raise", "return", "yield", "del",
+            "elif", "except", "finally", "try", "lambda",
+        ):
+            continue
+        # Saltar builtins de Python que parecen llamadas a funcion
+        if nombre in (
+            "list", "dict", "str", "int", "float", "bool", "set", "tuple",
+            "len", "range", "type", "isinstance", "hasattr", "getattr",
+            "setattr", "sum", "min", "max", "abs", "all", "any",
+            "enumerate", "zip", "map", "filter", "reversed", "sorted",
+            "open", "print", "input", "super", "object", "property",
+            "staticmethod", "classmethod", "iter", "next", "repr",
+            "ord", "chr", "hex", "oct", "bin", "format", "callable",
+            "issubclass", "eval", "exec", "compile", "globals", "locals",
+            "vars", "dir", "id", "hash", "pow", "round", "divmod",
+        ):
             continue
         # Saltar metodos de objeto (ej: .split, .join)
         if codigo[max(0, m.start() - 1)] == ".":
@@ -64,12 +80,14 @@ def verificar_cross_reference(
             # Verificar que la funcion destino tenga RN en su codigo
             codigo_destino = info.get("codigo", "")
             if not _tiene_rn_en_codigo(codigo_destino, rn_id):
-                errores.append(RNCrossError(
-                    archivo=archivo,
-                    linea=0,
-                    mensaje=f"'{rn_id}' declarada pero '{llamada}' no la tiene marcada",
-                    sugerencia=f"Agregar '# {rn_id}' en la funcion '{llamada}'",
-                ))
+                errores.append(
+                    RNCrossError(
+                        archivo=archivo,
+                        linea=0,
+                        mensaje=f"'{rn_id}' declarada pero '{llamada}' no la tiene marcada",
+                        sugerencia=f"Agregar '# {rn_id}' en la funcion '{llamada}'",
+                    )
+                )
 
     return errores
 
