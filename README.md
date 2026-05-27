@@ -1,8 +1,10 @@
-# docpact
+# docpact — AICDD (AI Contract-Driven Development)
 
 **docpact verifica que lo que tu código promete sea lo que realmente hace.**
 
-Un linter estático que valida que los `CONTRATO:` en tus docstrings estén sincronizados con la implementación real. Pensado para codebases donde los agentes de IA son los principales escritores y lectores del código.
+Un verificador de CONTRATOS embebidos en docstrings, para codebases donde
+los agentes de IA son los principales escritores y lectores del código.
+Backend Python y frontend TypeScript con el mismo formato.
 
 ```bash
 pip install docpact
@@ -10,40 +12,49 @@ docpact check .
 ```
 
 ```
-📊 249 funciones públicas encontradas
-✅ 7 contratos válidos
+📊 682 funciones públicas encontradas
+✅ 616 contratos válidos
+⚠️  0 warnings
 ✅ 0 errores
-Score: 70/100 — L2 (AI-Friendly)
+Score: 96/100 — L4 — AI-Optimized
 ```
 
----
+## ¿Qué es AICDD?
+
+**AI Contract-Driven Development.** Un modelo donde:
+
+1. Cada función pública declara un **CONTRATO** en su docstring:
+   qué recibe, qué devuelve, qué efectos secundarios tiene, qué reglas
+   de negocio implementa, y de qué depende.
+2. **docpact verifica** que el CONTRATO no mienta — cruza lo declarado
+   contra el código fuente real (AST walker), los imports, y los comentarios.
+3. **3 capas de verificación** evitan que el agente pueda saltarse el control:
+   - **Estática** — pre-commit + `make check`
+   - **Dinámica** — sandbox Docker + Hypothesis PBT + trap loop PASS/FAIL
+   - **Gobernanza** — CI/CD en GitHub Actions (infranqueable para el agente)
+
+AICDD no es TDD. No escribes tests primero. Escribes el CONTRATO primero
+(como metadata en el docstring) y docpact verifica que el código lo cumpla.
 
 ## Estado actual
 
-**MVP funcional.** El core está sólido y ya se usa en producción en ioDesk-3.
-
-**v0.4.2 — mypy strict + TypeScript CONTRATOS + sidefx checker.** 
-El core está sólido y ya se usa en producción en ioDesk-3.
+**v0.4.2 — Production-ready en ioDesk-3 (Django 6 + React 19).**
 
 | Componente | Estado |
 |------------|--------|
-| Parser de CONTRATOS (Python) | ✅ Listo |
-| Parser de CONTRATOS (TypeScript/JSX) | ✅ Listo |
-| `docpact check` — side_effects vs AST | ✅ Listo |
-| `docpact check` — side_effects TS | ✅ Listo |
-| `docpact check` — RN-XXX en comentarios | ✅ Listo |
-| `docpact check` — dependencias existen | ✅ Listo |
-| `docpact check` — strict mode (Python + TS) | ✅ Listo |
-| `docpact extract` (Python + TypeScript) | ✅ Listo |
-| API Python (`docpact.api`) | ✅ Listo |
-| MCP server para agentes | ✅ Listo |
-| mypy --strict (0 errores) | ✅ Listo |
-| 119 tests, cobertura 56% | ✅ Listo |
-| `docpact init` — generar CONTRATOS | ⏳ No |
-| Output SARIF | ⏳ No |
-| Verificación cross-file | ⏳ No |
-
----
+| Parser de CONTRATOS (Python) | ✅ |
+| Parser de CONTRATOS (TypeScript/JSX) | ✅ |
+| `docpact check` (+ strict, + fix) | ✅ |
+| `docpact extract` (Python + TS) | ✅ |
+| `docpact run` (sandbox Docker + PBT) | ✅ |
+| `docpact init` (generación automática) | ✅ |
+| RN test checker (`tests/rn/test_rn_XXX.py`) | ✅ |
+| Side effects checker (Python + TS) | ✅ |
+| Dependencias checker | ✅ |
+| Signature checker (input/output vs firma) | ✅ |
+| API Python (`docpact.api`) | ✅ |
+| MCP server para agentes | ✅ |
+| 128 tests, mypy --strict (0 errores) | ✅ |
 
 ## Instalación
 
@@ -51,9 +62,8 @@ El core está sólido y ya se usa en producción en ioDesk-3.
 pip install docpact
 ```
 
-Requiere Python 3.10+. Sin dependencias externas.
-
----
+Requiere Python 3.10+, Sin dependencias externas.
+Para `docpact run`: requiere Docker.
 
 ## Uso
 
@@ -67,24 +77,17 @@ docpact check .
 # Modo strict (falla si hay funciones sin CONTRATO)
 docpact check . --strict
 
+# Auto-corregir side_effects
+docpact check . --fix
+
 # Extraer todos los CONTRATOS como JSON
 docpact extract soporte/services/tickets.py --format json
-```
 
-### Desde Python (API)
+# Verificación dinámica en sandbox Docker
+docpact run solution.py --tests tests/
 
-```python
-from docpact.api import check_proyecto, check_file
-
-# Verificar un archivo
-resultado = check_file("soporte/services/tickets.py")
-resultado.valido         # True/False
-resultado.calcular_score()  # 0-100
-
-# Verificar todo el proyecto
-proyecto = check_proyecto(".", strict=True)
-proyecto.total_errores
-proyecto.nivel  # "L2 — AI-Friendly"
+# Generar CONTRATO automático
+docpact init soporte/services/tickets.py --function crear_ticket
 ```
 
 ### Desde agentes (MCP)
@@ -101,8 +104,6 @@ proyecto.nivel  # "L2 — AI-Friendly"
 ```
 
 Herramientas expuestas: `docpact_check`, `docpact_extract`, `docpact_score`.
-
----
 
 ## Formato del CONTRATO
 
@@ -127,63 +128,37 @@ def sumar_sesiones(tickets: list[Ticket]) -> HorasCalculadas:
 ### Reglas
 
 1. **`side_effects` es obligatorio.** `ninguno` si no hay efectos.
-2. **`rn:`** — cada ID debe aparecer como `# RN-XXX` en el cuerpo.
+2. **`rn:`** — cada ID debe aparecer como `# RN-XXX` en el código.
+   Y debe existir `tests/rn/test_rn_XXX.py` con tests de esa regla.
 3. **`dependencias:`** — cada ruta debe existir. Formato: `ruta/archivo.py::Simbolo`.
 4. **Campos opcionales:** `input`, `output`, `borde`.
 
----
 ## Qué verifica docpact
 
 | Verificación | Método | ¿Qué pasa si falla? |
 |---|---|---|
-| `side_effects: ninguno` pero hay llamadas reales | AST walker busca patrones de `.create`, `send_mail`, etc. | ❌ Error |
-| Dependencia apunta a archivo/símbolo que no existe | Resolución de rutas + validación simbólica | ❌ Error |
+| `side_effects: ninguno` pero hay llamadas reales | AST walker busca `.create`, `send_mail`, etc. | ❌ Error |
+| Dependencia apunta a archivo que no existe | Resolución de rutas | ❌ Error |
 | strict: función pública sin CONTRATO | Detecta funciones sin bloque CONTRATO | ❌ Error |
-| RN-XXX declarada sin `// RN-XXX` en el cuerpo | Extrae comentarios de la fuente | ⚠️ Warning |
-| TypeScript: side_effects no declarados | Regex sobre patrones `api.post`, `fetch(`, etc. | ❌ Error |
-| TypeScript: dependencia faltante | Resolución con .ts/.tsx/.jsx extensiones | ❌ Error |
+| RN-XXX declarada sin `# RN-XXX` en el cuerpo | Extrae comentarios de la fuente | ⚠️ Warning |
+| RN-XXX declarada sin `tests/rn/test_rn_XXX.py` | Verifica existencia del archivo de test | ❌ Error |
+| TypeScript/JSX: side_effects no declarados | Regex sobre `api.post`, `fetch(`, etc. | ❌ Error |
+| TypeScript/JSX: CONTRATO en JSDoc | Parser de comentarios `//` y `/** */` | ❌ Error |
+| Signature: input/output CONTRATO vs firma real | Comparación de tipos | ⚠️ Warning |
 
 ### Limitaciones conocidas
 
 1. **AST walker (Python):** Busca strings literales (`".create"`, `"send_mail"`).
-   No detecta `getattr(Model, 'create')()` ni otras formas dinámicas.
-   Para agentes que escriben código directo es suficiente.
+   No detecta `getattr(Model, 'create')()`. Suficiente para agentes no adversariales.
 
-2. **Parser TypeScript:** Usa regex, no AST. No detecta funciones sin CONTRATO
-   (solo verifica lo que está comentado explícitamente). No verifica tipos TS
-   (eso lo hace el compilador TypeScript).
+2. **Parser TypeScript:** Regex, no AST. No detecta funciones sin CONTRATO
+   (solo lee lo que está comentado). No verifica tipos (eso lo hace tsc).
 
-3. **Side effects en TypeScript:** Detecta patrones comunes
-   (`api.post`, `fetch(`, `axios.`, `.create()`). Cubre ~80% de casos reales.
-   No detecta llamadas dinámicas ni métodos con nombres poco comunes.
+3. **Side effects en TypeScript:** Detecta `api.post`, `fetch(`, `axios.`.
+   Cubre ~80%. No detecta llamadas dinámicas.
 
-4. **RN checker en TypeScript:** Busca `RN-XXX` en el código fuente.
-   Requiere que la RN se mencione como `// RN-XXX` en un comentario.
-   No verifica que la regla esté realmente implementada.
-
-5. **Coverage:** 56% actual. CLI, MCP server, y sandbox runner tienen 0%
-   por su naturaleza de interacción con el sistema operativo.
-
----
-
-## Configuración
-
-```toml
-# docpact.toml
-[docpact]
-strict = false
-min_score = 75
-exclude = ["tests/", "migrations/"]
-
-[docpact.side_effects]
-db_write = [".create", ".save", ".update", ".delete"]
-email = ["send_mail", "EmailMessage"]
-
-[docpact.rules]
-rn_prefix = "RN-"
-```
-
----
+4. **RN checker TypeScript:** Busca `RN-XXX` en código fuente. Requiere
+   comentario explícito. No verifica implementación real.
 
 ## Integración CI/CD
 
@@ -203,8 +178,6 @@ jobs:
         run: docpact check . --config docpact.toml
 ```
 
----
-
 ## Score AI-Native
 
 | Nivel | Score | Nombre |
@@ -215,16 +188,26 @@ jobs:
 | L3 | 75–89 | AI-Native |
 | L4 | 90–100 | AI-Optimized |
 
----
+## Filosofía
+
+AICDD no es una herramienta — es un **protocolo de comunicación** entre
+agentes y código. El CONTRATO es una interfaz que tres actores pueden leer:
+humanos, agentes, y parsers. docpact es la implementación de referencia
+del verificador.
+
+- **Los agentes escriben código + CONTRATO**
+- **docpact verifica que el CONTRATO no mienta**
+- **3 capas de verificación impiden que el agente se salte el control**
+- **El resultado es código auto-documentado y verificable**
 
 ## Base evidencia
 
 - [Agentless (arXiv:2407.01489)](https://arxiv.org/abs/2407.01489): ~60% de fallos de agentes ocurren en localización, no generación
-- [SWE-bench](https://www.swebench.com/): el scaffold importa más que el modelo
-- [THE AGENT CODE MANIFESTO](https://github.com/tu-org/agent-code-manifesto): las reglas que docpact implementa
-- [Hidden Cost of Readability (arXiv:2508.13666)](https://arxiv.org/abs/2508.13666): el formateo humano cuesta 25% de tokens sin aportar señal
-
----
+- [EvilGenie](https://github.com/JonathanGabor/EvilGenie): benchmark de reward hacking
+- [SpecBench (arXiv:2605.21384)](https://arxiv.org/abs/2605.21384): taxonomía de reward hacking
+- [PBT-Bench (arXiv:2605.15229)](https://arxiv.org/abs/2605.15229): Property-Based Testing para agentes
+- [THE AGENT CODE MANIFESTO](https://github.com/tu-org/agent-code-manifesto): reglas AI-Native
+- [Hidden Cost of Readability (arXiv:2508.13666)](https://arxiv.org/abs/2508.13666): formateo humano cuesta 25% de tokens
 
 ## Licencia
 
