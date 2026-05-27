@@ -59,6 +59,14 @@ class Hallazgo:
     sugerencia: str = ""
 
     def a_error_parser(self) -> ErrorParser:
+        """a_error_parser — Descripción.
+
+            CONTRATO:
+            input:
+            output: ErrorParser — Descripción del retorno
+            side_effects: ninguno
+            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
+        """
         return ErrorParser(
             campo=self.campo,
             mensaje=self.mensaje,
@@ -89,14 +97,38 @@ class ResultadoFuncion:
 
     @property
     def errores(self) -> list[Hallazgo]:
+        """errores — Descripción.
+
+            CONTRATO:
+            input:
+            output: list[Hallazgo] — Descripción del retorno
+            side_effects: ninguno
+            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
+        """
         return [h for h in self.hallazgos if h.tipo == "error"]
 
     @property
     def warnings(self) -> list[Hallazgo]:
+        """warnings — Descripción.
+
+            CONTRATO:
+            input:
+            output: list[Hallazgo] — Descripción del retorno
+            side_effects: ninguno
+            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
+        """
         return [h for h in self.hallazgos if h.tipo == "warning"]
 
     @property
     def valido(self) -> bool:
+        """valido — Descripción.
+
+            CONTRATO:
+            input:
+            output: bool — Descripción del retorno
+            side_effects: ninguno
+            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
+        """
         return len(self.errores) == 0
 
 
@@ -109,18 +141,50 @@ class ResultadoArchivo:
 
     @property
     def total_funciones(self) -> int:
+        """total_funciones — Descripción.
+
+            CONTRATO:
+            input:
+            output: int — Descripción del retorno
+            side_effects: ninguno
+            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
+        """
         return len(self.funciones)
 
     @property
     def funciones_con_contrato(self) -> int:
+        """funciones_con_contrato — Descripción.
+
+            CONTRATO:
+            input:
+            output: int — Descripción del retorno
+            side_effects: ninguno
+            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
+        """
         return sum(1 for f in self.funciones if f.tiene_contrato)
 
     @property
     def total_errores(self) -> int:
+        """total_errores — Descripción.
+
+            CONTRATO:
+            input:
+            output: int — Descripción del retorno
+            side_effects: ninguno
+            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
+        """
         return sum(len(f.errores) for f in self.funciones)
 
     @property
     def total_warnings(self) -> int:
+        """total_warnings — Descripción.
+
+            CONTRATO:
+            input:
+            output: int — Descripción del retorno
+            side_effects: ninguno
+            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
+        """
         return sum(len(f.warnings) for f in self.funciones)
 
 
@@ -149,6 +213,14 @@ class ResultadoProyecto:
 
     @property
     def total_archivos(self) -> int:
+        """total_archivos — Descripción.
+
+            CONTRATO:
+            input:
+            output: int — Descripción del retorno
+            side_effects: ninguno
+            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
+        """
         return len(self.archivos)
 
     def calcular_score(self) -> int:
@@ -178,6 +250,14 @@ class ResultadoProyecto:
 
     @property
     def nivel(self) -> str:
+        """nivel — Descripción.
+
+            CONTRATO:
+            input:
+            output: str — Descripción del retorno
+            side_effects: ninguno
+            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
+        """
         score = self.calcular_score()
         if score >= 90:
             return "L4 — AI-Optimized"
@@ -227,15 +307,19 @@ def check_file(
         # Usar (nombre, linea) para evitar colisiones con métodos sobrecargados
         doc_map[f"{nombre}:{linea}"] = (linea, tipo, doc)
 
+    tiene_future_annotations = "from __future__ import annotations" in fuente
+
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.ClassDef):
             for item in ast.iter_child_nodes(node):
                 if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     _procesar_funcion(
-                        item, str(path), fuente, config, doc_map, resultado
+                        item, str(path), fuente, config, doc_map, resultado,
+                        tiene_future_annotations=tiene_future_annotations,
                     )
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            _procesar_funcion(node, str(path), fuente, config, doc_map, resultado)
+            _procesar_funcion(node, str(path), fuente, config, doc_map, resultado,
+                              tiene_future_annotations=tiene_future_annotations)
 
     return resultado
 
@@ -457,6 +541,7 @@ def _procesar_funcion(
     config: DocpactConfig,
     doc_map: dict[str, tuple[int, str, str]],
     resultado: ResultadoArchivo,
+    tiene_future_annotations: bool = False,
 ) -> None:
     """Procesa una función: extrae CONTRATO y ejecuta checkers."""
     nombre = node.name
@@ -655,7 +740,8 @@ def _procesar_funcion(
     from typing import Optional as _Optional
 
     # Verificar firma: input/output del CONTRATO vs firma real de Python
-    _check_signature(node, contrato, nombre, archivo, hallazgos)
+    _check_signature(node, contrato, nombre, archivo, hallazgos,
+                     tiene_future_annotations=tiene_future_annotations)
 
     if check_rn_against_registry is not None:
         proyecto_root = _find_project_root(archivo)
@@ -966,6 +1052,7 @@ def _check_signature(
     nombre: str,
     archivo: str,
     hallazgos: list[Hallazgo],
+    tiene_future_annotations: bool = False,
 ) -> None:
     """Verifica que input/output del CONTRATO coincidan con la firma real."""
     import inspect
@@ -994,7 +1081,14 @@ def _check_signature(
                 )
 
     # Verificar output del CONTRATO vs return annotation
-    if contrato.output and hasattr(node, "returns") and node.returns is not None:
+    # Con from __future__ import annotations, todas las anotaciones son strings
+    # y la comparación de tipos no es confiable
+    if (
+        contrato.output
+        and hasattr(node, "returns")
+        and node.returns is not None
+        and not tiene_future_annotations
+    ):
         try:
             return_type = ast.unparse(node.returns)
             contrato_out = contrato.output

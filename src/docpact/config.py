@@ -52,6 +52,7 @@ class DocpactConfig:
         warnings_suppress: Optional[list[str]] = None,
         rn_patrones: Optional[dict[str, dict[str, str]]] = None,
         modules: Optional[dict[str, dict]] = None,
+        types_allowlist: Optional[set[str]] = None,
     ):
         self.strict = strict
         self.min_score = min_score
@@ -61,6 +62,7 @@ class DocpactConfig:
         self.warnings_suppress = warnings_suppress or []
         self.rn_patrones = rn_patrones or {}
         self.modules = modules or {}
+        self.types_allowlist: set[str] = types_allowlist or set()
         self._patrones_compilados: Optional[dict[str, list[re.Pattern[str]]]] = None
 
     def debe_suprimir(self, mensaje: str) -> bool:
@@ -142,6 +144,9 @@ class DocpactConfig:
             if isinstance(cfg, dict) and "patron" in cfg:
                 rn_patrones[rn_id] = cfg
 
+        # Types allowlist: tipos que nunca deben generar warning
+        types_allowlist = set(docpact_cfg.get("types_allowlist", []))
+
         # Cargar módulos desde docpact.toml (sección [modules])
         modules = dict(data.get("modules", {}))
 
@@ -167,6 +172,7 @@ class DocpactConfig:
             warnings_suppress=warnings_suppress,
             rn_patrones=rn_patrones,
             modules=modules,
+            types_allowlist=types_allowlist if types_allowlist else None,
         )
 
 
@@ -179,4 +185,5 @@ def _serializar_config(config: DocpactConfig) -> dict[str, Any]:
         "categorias_side_effects": list(config.patrones_side_effects.keys()),
         "rn_prefix": config.rn_prefix,
         "modulos": list(config.modules.keys()),
+        "types_allowlist": sorted(config.types_allowlist),
     }
