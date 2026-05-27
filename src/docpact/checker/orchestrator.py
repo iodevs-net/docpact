@@ -736,7 +736,68 @@ def check_proyecto(
 
     resultado = ResultadoProyecto(config=config)
     resultado.archivos = resultados_archivos
+
+    # Cross-reference RN: verificar que funciones llamadas tengan las RNs
+    if resultados_archivos:
+        _errores_xref = _check_cross_reference_proyecto(resultados_archivos, config)
+        for ra in resultado.archivos:
+            for rf in ra.funciones:
+                for ex in _errores_xref:
+                    if ex.archivo == ra.archivo:
+                        rf.hallazgos.append(Hallazgo(
+                            tipo="warning", campo="rn",
+                            funcion=rf.nombre, archivo=ex.archivo,
+                            linea=ex.linea, mensaje=ex.mensaje,
+                            sugerencia=ex.sugerencia,
+                        ))
+
     return resultado
+
+
+def _check_cross_reference_proyecto(
+    resultados_archivos: list,
+    config: object,
+) -> list:
+    """Cross-reference RN entre funciones del proyecto."""
+    if not getattr(config, "rn_patrones", None):
+        return []
+    from docpact.checker.rn_crossref import (
+        build_funcion_map, verificar_cross_reference,
+    )
+    # Construir mapa de funciones
+    fuentes: dict[str, str] = {}
+    mapa_funciones: dict[str, dict[str, str]] = {}
+    for ra in resultados_archivos:
+        archivo = getattr(ra, "archivo", "")
+        if archivo:
+            try:
+                fuentes[archivo] = Path(archivo).read_text(encoding="utf-8")
+            except Exception:
+                pass
+        for rf in getattr(ra, "funciones", []):
+            nombre = getattr(rf, "nombre", "")
+            if nombre and archivo:
+                mapa_funciones[nombre] = {
+                    "codigo": fuentes.get(archivo, ""),
+                    "archivo": archivo,
+                }
+
+    errores: list = []
+    for ra in resultados_archivos:
+        for rf in getattr(ra, "funciones", []):
+            contrato = getattr(rf, "contrato", None)
+            if not contrato or not getattr(contrato, "rn", None):
+                continue
+            rn_ids = [r.id for r in contrato.rn if r.id]
+            if not rn_ids:
+                continue
+            codigo = fuentes.get(getattr(ra, "archivo", ""), "")
+            if codigo:
+                errs = verificar_cross_reference(
+                    getattr(ra, "archivo", ""), codigo, rn_ids, mapa_funciones,
+                )
+                errores.extend(errs)
+    return errores
 
 def _check_signature(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
