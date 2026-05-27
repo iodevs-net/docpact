@@ -462,6 +462,9 @@ def _procesar_funcion(
     contrato, parse_errors = parsear(tokens)
 
     hay_contrato = bool(contrato.side_effects or contrato.rn or contrato.input or contrato.output)
+    # CONTRATO minimal (solo side_effects: ninguno + rn: []) también cuenta
+    if not hay_contrato and "CONTRATO:" in doc:
+        hay_contrato = True
 
     if not hay_contrato and config.strict:
         res = ResultadoFuncion(

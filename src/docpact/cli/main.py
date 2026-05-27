@@ -66,6 +66,10 @@ def main(argv: list[str] | None = None) -> int:
         "--report", action="store_true",
         help="Reporte detallado con sugerencias"
     )
+    check_parser.add_argument(
+        "--fix", action="store_true",
+        help="Auto-genera CONTRATOs para funciones sin ninguno (--strict implícito)"
+    )
 
     # ├─ mcp
     mcp_parser = subparsers.add_parser(
@@ -273,8 +277,8 @@ def _cmd_check(args: argparse.Namespace) -> int:
                 break
 
     config = DocpactConfig.desde_toml(config_path) if config_path else DocpactConfig()
-    if args.strict:
-        # Sobrescribir strict desde flag CLI
+    if args.strict or args.fix:
+        # --fix implica --strict
         config.strict = True
 
     resultado = check_proyecto(args.path, config, diff_only=args.diff)
@@ -298,6 +302,26 @@ def _cmd_check(args: argparse.Namespace) -> int:
     else:
         print(f"✅ 0 errores")
     print(f"\nScore: {score}/100 — {nivel}")
+
+    # Auto-generar CONTRATOs si --fix está activo
+    if args.fix:
+        from docpact.cli.init import init_function
+        from pathlib import Path as _Path
+        _generados = 0
+        _omitidos = 0
+        for archivo_result in resultado.archivos:
+            for func in archivo_result.funciones:
+                if not func.tiene_contrato:
+                    exito, msg = init_function(_Path(archivo_result.archivo), func.nombre, safe=True)
+                    if exito:
+                        print(f"  ✅ Auto-generado: {func.nombre} ({archivo_result.archivo})")
+                        _generados += 1
+                    else:
+                        _omitidos += 1
+        if _generados > 0:
+            print(f"\n🔧 {_generados} CONTRATOS generados automáticamente")
+        if _omitidos > 0:
+            print(f"⏭️  {_omitidos} funciones omitidas (tienen docstring sin CONTRATO, usa --force en init)")
 
     # Mostrar hallazgos detallados
     if args.report or te > 0 or tw > 0:
