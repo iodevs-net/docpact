@@ -68,9 +68,8 @@ class DocpactConfig:
             for prefijo in prefijos:
                 if parte.startswith(prefijo):
                     return True
-            # También excluir por extensión si es un archivo
             if parte == path.name:
-                if path.suffix not in (".py", ""):
+                if path.suffix not in (".py", ".ts", ".tsx", ".jsx", ""):
                     return True
         return False
 

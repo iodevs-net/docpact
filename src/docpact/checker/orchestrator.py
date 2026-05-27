@@ -30,7 +30,7 @@ from docpact.models.contrato import Contrato, ErrorParser
 from docpact.parser.extractor import extraer_docstrings
 from docpact.parser.lexer import tokenizar
 from docpact.parser.parser import parsear
-
+from docpact.parser.ts_parser import extraer_contratos_ts
 
 @dataclass
 class Hallazgo:
@@ -167,10 +167,10 @@ def check_file(
     archivo: str | Path,
     config: DocpactConfig,
 ) -> ResultadoArchivo:
-    """Verifica un archivo Python completo.
+    """Verifica un archivo Python, TypeScript o JSX.
 
     Args:
-        archivo: Ruta al archivo .py.
+        archivo: Ruta al archivo.
         config: Configuración de docpact.
 
     Returns:
@@ -180,26 +180,25 @@ def check_file(
     if config.debe_excluir(path):
         return ResultadoArchivo(archivo=str(path))
 
+    if path.suffix in (".ts", ".tsx", ".jsx"):
+        return _check_file_ts(path, config)
+
+    # ── Python ──
     try:
         with open(path, "r", encoding="utf-8") as f:
             fuente = f.read()
         tree = ast.parse(fuente, filename=str(path))
-    except (SyntaxError, FileNotFoundError, UnicodeDecodeError) as e:
-        # Archivo con error de sintaxis o binario — seguimos
+    except (SyntaxError, FileNotFoundError, UnicodeDecodeError):
         return ResultadoArchivo(archivo=str(path))
 
     resultado = ResultadoArchivo(archivo=str(path))
 
-    # Extraer funciones con docstring (usa la lógica de Fase 1)
     doc_funciones = extraer_docstrings(path)
 
-    # Crear un mapa: nombre_función → (linea, tipo, docstring)
-    # Nota: si hay funciones con el mismo nombre, solo procesamos la última
     doc_map: dict[str, tuple[int, str, str]] = {}
     for linea, nombre, tipo, doc in doc_funciones:
         doc_map[nombre] = (linea, tipo, doc)
 
-    # Recorrer AST para encontrar nodos de funciones
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.ClassDef):
             for item in ast.iter_child_nodes(node):
@@ -211,6 +210,53 @@ def check_file(
             _procesar_funcion(
                 node, str(path), fuente, config, doc_map, resultado
             )
+
+    return resultado
+
+
+def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
+    """Verifica un archivo TypeScript/JSX extrayendo CONTRATOS con regex."""
+    resultado = ResultadoArchivo(archivo=str(path))
+
+    try:
+        contratos = extraer_contratos_ts(str(path))
+    except (FileNotFoundError, UnicodeDecodeError):
+        return resultado
+
+    for c in contratos:
+        nombre = c.get("nombre_funcion", "")
+        if not nombre or nombre.startswith("_"):
+            continue
+
+        tiene_contrato = bool(
+            c.get("input") or c.get("output") or c.get("side_effects")
+        )
+
+        if not tiene_contrato and config.strict:
+            resultado.funciones.append(ResultadoFuncion(
+                nombre=nombre,
+                archivo=str(path),
+                linea=c.get("linea", 0),
+                tiene_contrato=False,
+                hallazgos=[
+                    Hallazgo(
+                        tipo="error",
+                        campo="presencia",
+                        funcion=nombre,
+                        archivo=str(path),
+                        linea=c.get("linea", 0),
+                        mensaje=f"Función pública '{nombre}' sin CONTRATO",
+                        sugerencia="Agrega un bloque CONTRATO al comentario de la función",
+                    )
+                ],
+            ))
+        elif tiene_contrato:
+            resultado.funciones.append(ResultadoFuncion(
+                nombre=nombre,
+                archivo=str(path),
+                linea=c.get("linea", 0),
+                tiene_contrato=True,
+            ))
 
     return resultado
 
@@ -429,7 +475,12 @@ def check_proyecto(
     if ruta.is_file():
         archivos = [ruta]
     elif ruta.is_dir():
-        archivos = sorted(ruta.rglob("*.py"))
+        archivos = sorted(
+            list(ruta.rglob("*.py"))
+            + list(ruta.rglob("*.ts"))
+            + list(ruta.rglob("*.tsx"))
+            + list(ruta.rglob("*.jsx"))
+        )
     else:
         archivos = []
 
@@ -438,7 +489,6 @@ def check_proyecto(
     if not archivos:
         return ResultadoProyecto(config=config)
 
-    # Procesar en paralelo con ThreadPoolExecutor
     import concurrent.futures
     resultados_archivos: list[ResultadoArchivo] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
