@@ -137,7 +137,11 @@ def _parsear_campo_simple(
             if isinstance(raw, list):
                 return idx + 1, None, None, "", {"campo": nombre, "items": raw}
         except json.JSONDecodeError:
-            pass
+            inner = valor[1:-1].strip()
+            if inner:
+                raw_items = [item.strip() for item in inner.split(",") if item.strip()]
+                if raw_items:
+                    return idx + 1, None, None, "", {"campo": nombre, "items": raw_items}
 
     return idx + 1, None, None, "", None
 
@@ -170,6 +174,10 @@ def _parsear_campo_compuesto(
         if token.tipo == TipoToken.SUB_CAMPO:
             if campo == "input":
                 _procesar_input(token, resultado, errores)
+            elif campo == "borde":
+                partes = token.valor.split(":", 1)
+                if len(partes) >= 2:
+                    resultado["borde"].append(CasoBorde(condicion=partes[0].strip(), comportamiento=partes[1].strip()))
             idx += 1
             continue
 
