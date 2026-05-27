@@ -83,9 +83,25 @@ def main(argv: list[str] | None = None) -> int:
         "--batch", action="store_true",
         help="Procesar todo el directorio"
     )
-    init_parser.add_argument(
-        "--force", action="store_true",
-        help="Forzar inserción en funciones con docstring existente (peligroso)"
+
+    # ├─ run
+    run_parser = subparsers.add_parser(
+        "run", help="Verificación dinámica en sandbox"
+    )
+    run_parser.add_argument(
+        "path", type=str, nargs="?",
+        help="Archivo o directorio a verificar dinámicamente"
+    )
+    run_parser.add_argument(
+        "--tests", required=True,
+        help="Directorio con tests"
+    )
+    run_parser.add_argument(
+        "--max-iterations", type=int, default=10
+    )
+    run_parser.add_argument(
+        "--build", action="store_true",
+        help="Construir imagen sandbox"
     )
 
     args = parser.parse_args(argv)
@@ -96,6 +112,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_check(args)
     elif args.command == "init":
         return _cmd_init(args)
+    elif args.command == "run":
+        return _cmd_run(args)
     elif args.command == "mcp":
         return _cmd_mcp(args)
     else:
@@ -272,6 +290,17 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
     from docpact.mcp_server import main as mcp_main
     return mcp_main()
 
+
+
+def _cmd_run(args: argparse.Namespace) -> int:
+    """Comando run: verificación dinámica en sandbox."""
+    from docpact.runner import main as runner_main
+    argv = [args.path, "--tests", args.tests]
+    if getattr(args, "max_iterations", None):
+        argv += ["--max-iterations", str(args.max_iterations)]
+    if getattr(args, "build", False):
+        argv += ["--build"]
+    return runner_main(argv)
 
 def _cmd_init(args: argparse.Namespace) -> int:
     """Comando init: genera esqueletos de CONTRATO para funciones sin contrato."""
