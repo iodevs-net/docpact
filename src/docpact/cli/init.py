@@ -75,16 +75,53 @@ def _buscar_funcion(
     return None
 
 
+def _es_trivial(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    """True si la función es trivial: sin params, sin retorno declarado,
+    sin llamadas a side effects. Getters, setters, delegates simples."""
+    params = [a.arg for a in node.args.args if a.arg not in ("self", "cls")]
+    if params:
+        return False
+    if node.returns:
+        return False
+    # Solo statements simples: return, assign, expr, pass
+    for stmt in node.body:
+        if isinstance(stmt, ast.Expr):
+            continue  # docstring
+        if isinstance(stmt, ast.Pass):
+            continue
+        if isinstance(stmt, ast.Return):
+            if stmt.value is not None and not isinstance(stmt.value, (ast.Constant, ast.Attribute, ast.Name)):
+                return False  # return con expresión compleja
+            continue
+        if isinstance(stmt, ast.Assign):
+            if len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Attribute):
+                continue  # self.x = y (setter simple)
+            return False
+        return False  # cualquier otro statement
+    return True
+
+
 def _generar_bloque(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     nombre: str,
     fuente: str,
     path: Path,
 ) -> str:
-    """Genera el texto del bloque CONTRATO para una función."""
+    """Genera el texto del bloque CONTRATO para una función.
+
+    Produce CONTRATO completo (input, output, side_effects, rn, dependencias)
+    o minimal (solo side_effects + rn) para funciones triviales."""
     config = DocpactConfig()
     lines: list[str] = []
     lines.append("    CONTRATO:")
+
+    # Trivial: solo side_effects + rn, sin input/output
+    if _es_trivial(node):
+        lines.append("    side_effects: ninguno")
+        lines.append('    rn: []')
+        return "\n".join(lines)
 
     # Input: parámetros con sus type hints
     params = [a.arg for a in node.args.args if a.arg != "self"]
