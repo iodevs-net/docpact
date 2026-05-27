@@ -30,6 +30,7 @@ from docpact.config import DocpactConfig
 from docpact.parser.extractor import extraer_docstrings
 from docpact.parser.lexer import tokenizar
 from docpact.parser.parser import parsear
+from docpact.parser.ts_parser import extraer_contratos_ts
 
 
 def check_file(
@@ -90,12 +91,46 @@ def extract_contratos(
         Lista de CONTRATOS como dicts serializables.
     """
     ruta = Path(path)
-    archivos = list(ruta.rglob("*.py")) if ruta.is_dir() else [ruta]
+    if ruta.is_dir():
+        archivos = (
+            list(ruta.rglob("*.py"))
+            + list(ruta.rglob("*.ts"))
+            + list(ruta.rglob("*.tsx"))
+            + list(ruta.rglob("*.jsx"))
+        )
+    else:
+        archivos = [ruta]
 
     resultados = []
     for archivo in archivos:
         if _es_excluido(archivo):
             continue
+
+        ext = archivo.suffix
+        if ext in (".ts", ".tsx", ".jsx"):
+            try:
+                ts_resultados = extraer_contratos_ts(str(archivo))
+            except (FileNotFoundError, UnicodeDecodeError):
+                continue
+            for r in ts_resultados:
+                resultados.append({
+                    "archivo": str(archivo),
+                    "funcion": r.get("nombre_funcion", "<desconocida>"),
+                    "tipo": "function",
+                    "linea": r.get("linea", 0),
+                    "contrato": {
+                        "input": r.get("input", {}),
+                        "output": r.get("output"),
+                        "output_descripcion": None,
+                        "side_effects": r.get("side_effects", []),
+                        "rn": r.get("rn", []),
+                        "borde": r.get("borde", []),
+                        "dependencias": r.get("dependencias", []),
+                    },
+                    "errores": [],
+                })
+            continue
+
         try:
             docstrings = extraer_docstrings(archivo, incluir_privadas=incluir_privadas)
         except (SyntaxError, FileNotFoundError):

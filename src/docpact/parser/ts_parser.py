@@ -254,12 +254,26 @@ def _extraer_funcion(lineas: list[str], desde: int) -> Optional[str]:
 
     Escanea desde la línea `desde` (0‑indexed) hacia adelante saltando
     líneas en blanco y comentarios.
+
+    Patrones detectados:
+      - function nombre(… / export function nombre(…
+      - export default function() {} / default function() {} → "default"
+      - const X = () => {} / let X = …
+      - class X { foo() { … } } → "foo"
+      - class Nombre
+      - export default () => {}
+      - método en objeto/class literal: nombre(…
     """
     for i in range(desde, len(lineas)):
         linea = lineas[i].strip()
 
         if not linea or linea.startswith("//") or linea.startswith("/*") or linea.startswith("*"):
             continue
+
+        # export default function() / default function() (anonymous)
+        m = re.match(r"(?:export\s+)?default\s+(?:async\s+)?function\s*\(", linea)
+        if m:
+            return "default"
 
         # function nombre(…
         m = re.match(r"(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+(\w[\w\d_$]*)", linea)
@@ -271,10 +285,20 @@ def _extraer_funcion(lineas: list[str], desde: int) -> Optional[str]:
         if m:
             return m.group(1)
 
+        # inline method inside class: class X { foo() { … }
+        m = re.match(r"(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+\w[\w\d_$]*\s*\{\s*(\w[\w\d_$]*)\s*\(", linea)
+        if m:
+            return m.group(1)
+
         # class Nombre
         m = re.match(r"(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+(\w[\w\d_$]*)", linea)
         if m:
             return m.group(1)
+
+        # export default () => {} / export default async () => {}
+        m = re.match(r"export\s+default\s+(?:async\s+)?\([^)]*\)\s*=>", linea)
+        if m:
+            return "default"
 
         # método en objeto/class literal: nombre(…
         m = re.match(r"(\w[\w\d_$]*)\s*\([^)]*\)\s*\{", linea)

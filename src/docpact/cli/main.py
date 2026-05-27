@@ -134,10 +134,16 @@ def _cmd_extract(args: argparse.Namespace) -> int:
     from docpact.parser.extractor import extraer_docstrings
     from docpact.parser.lexer import tokenizar
     from docpact.parser.parser import parsear
+    from docpact.parser.ts_parser import extraer_contratos_ts
 
     path = Path(args.path)
     if path.is_dir():
-        archivos = list(path.rglob("*.py"))
+        archivos = (
+            list(path.rglob("*.py"))
+            + list(path.rglob("*.ts"))
+            + list(path.rglob("*.tsx"))
+            + list(path.rglob("*.jsx"))
+        )
     elif path.is_file():
         archivos = [path]
     else:
@@ -148,6 +154,33 @@ def _cmd_extract(args: argparse.Namespace) -> int:
     for archivo in archivos:
         if _es_excluido(archivo):
             continue
+
+        ext = archivo.suffix
+        if ext in (".ts", ".tsx", ".jsx"):
+            try:
+                ts_resultados = extraer_contratos_ts(str(archivo))
+            except (FileNotFoundError, UnicodeDecodeError) as e:
+                print(f"⚠️  {archivo}: {e}", file=sys.stderr)
+                continue
+            for r in ts_resultados:
+                resultados.append({
+                    "archivo": str(archivo),
+                    "funcion": r.get("nombre_funcion", "<desconocida>"),
+                    "tipo": "function",
+                    "linea": r.get("linea", 0),
+                    "contrato": {
+                        "input": r.get("input", {}),
+                        "output": r.get("output"),
+                        "output_descripcion": None,
+                        "side_effects": r.get("side_effects", []),
+                        "rn": r.get("rn", []),
+                        "borde": r.get("borde", []),
+                        "dependencias": r.get("dependencias", []),
+                    },
+                    "errores": [],
+                })
+            continue
+
         try:
             docstrings = extraer_docstrings(
                 archivo, incluir_privadas=args.include_private
