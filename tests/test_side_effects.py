@@ -109,3 +109,54 @@ def foo():
     assert len(errores) >= 1
     # Debe mencionar db_write y email en el error
     assert any("db_write" in e.mensaje for e in errores)
+
+
+def test_extraer_llamadas_condicional():
+    """Debe extraer llamadas dentro de condicional if."""
+    codigo = """
+def foo(ticket):
+    if ticket.estado == "activo":
+        enviar_notificacion(ticket)
+    """
+    node = _parse_funcion(codigo)
+    llamadas = _extraer_llamadas(node)
+    assert "enviar_notificacion" in llamadas
+
+def test_extraer_llamadas_dinamica_no_detectada():
+    """Llamadas a métodos vía getattr (string) NO deben detectarse."""
+    codigo = """
+def foo():
+    getattr(obj, "create")(titulo="test")
+    """
+    node = _parse_funcion(codigo)
+    llamadas = _extraer_llamadas(node)
+    # getattr es una llamada y se detecta como tal.
+    # El método "create" NO debe detectarse porque se pasa como string.
+    assert "create" not in llamadas
+
+
+def test_check_side_effects_declaro_sin_llamadas():
+    """Declaró side effects pero sin llamadas reales → warning."""
+    codigo = """
+def foo():
+    x = 1 + 2
+    """
+    node = _parse_funcion(codigo)
+    contrato = Contrato(side_effects=[SideEffect("Crea ticket en BD")])
+    config = DocpactConfig()
+    errores = check_side_effects(node, contrato, config, "foo", "test.py")
+    assert len(errores) == 1
+    assert "pero no se detectaron" in errores[0].mensaje
+
+
+def test_check_side_effects_consistente():
+    """side_effects: ninguno y sin llamadas → sin errores."""
+    codigo = """
+def foo():
+    return 42
+    """
+    node = _parse_funcion(codigo)
+    contrato = Contrato()
+    config = DocpactConfig()
+    errores = check_side_effects(node, contrato, config, "foo", "test.py")
+    assert len(errores) == 0

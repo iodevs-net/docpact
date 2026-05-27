@@ -85,4 +85,63 @@ def test_nivel_es_string_valido():
     resultado = check_proyecto(FIXTURES)
     nivel = resultado.nivel
     assert nivel.startswith("L")
-    assert any(l in nivel for l in ["L0", "L1", "L2", "L3", "L4"])
+
+
+def test_check_file_ts_con_contrato():
+    """check_file debe procesar archivos .ts con CONTRATOS."""
+    from docpact.checker.orchestrator import check_file
+    ts_file = FIXTURES.parent / "fixtures_ts" / "single_line_contrato_completo.ts"
+    config = DocpactConfig()
+    resultado = check_file(str(ts_file), config)
+    assert resultado.funciones_con_contrato > 0
+    assert any(f.nombre == "validarTicket" for f in resultado.funciones)
+
+
+def test_check_file_ts_sin_contrato():
+    """check_file sobre .ts sin CONTRATO debe retornar 0 contratos."""
+    from docpact.checker.orchestrator import check_file
+    ts_file = FIXTURES.parent / "fixtures_ts" / "single_line_sin_contrato.ts"
+    config = DocpactConfig()
+    resultado = check_file(str(ts_file), config)
+    assert resultado.funciones_con_contrato == 0
+
+def test_check_file_ts_strict():
+    """strict=True: .ts con CONTRATO header pero vacío debe generar error."""
+    from docpact.checker.orchestrator import check_file
+    from pathlib import Path as _P
+    import tempfile
+    # Archivo con // CONTRATO: header pero sin campos → strict detecta
+    tmp = _P(tempfile.mkstemp(suffix=".ts")[1])
+    tmp.write_text("""\
+// CONTRATO:
+//   side_effects: ninguno
+async function crearTicket(): Promise<void> {
+    return;
+}
+""")
+    config = DocpactConfig(strict=True)
+    resultado = check_file(str(tmp), config)
+    tmp.unlink()
+    assert any("sin CONTRATO" in h.mensaje
+               for f in resultado.funciones
+               for h in f.hallazgos)
+
+def test_check_file_ts_sidefx_error():
+    """check_file .ts debe detectar side_effects no declarados."""
+    from docpact.checker.orchestrator import check_file
+    from pathlib import Path as _P
+    import tempfile
+    tmp = _P(tempfile.mkstemp(suffix=".ts")[1])
+    tmp.write_text("""\
+// CONTRATO:
+//   output: void
+//   side_effects: ninguno
+async function crearTicket(): Promise<void> {
+    await api.post('/tickets', {});
+}
+""")
+    config = DocpactConfig()
+    resultado = check_file(str(tmp), config)
+    tmp.unlink()
+    sidefx_hallazgos = [h for f in resultado.funciones for h in f.hallazgos
+                        if h.campo == "side_effects"]

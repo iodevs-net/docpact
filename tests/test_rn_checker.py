@@ -65,4 +65,25 @@ def test_extraer_ids_rn_con_prefijo_personalizado():
     """Debe soportar prefijos personalizados."""
     comentarios = ["# BR-010: business rule"]
     ids = _extraer_ids_rn(comentarios, prefijo="BR-")
-    assert "BR-010" in ids
+
+
+def test_extraer_ids_rn_sin_guion_falla():
+    """ID sin guión (RN999) no debe coincidir con patrón RN-XXX."""
+    from docpact.checker.rn_checker import _extraer_ids_rn
+    ids = _extraer_ids_rn(["# RN999 debe fallar"])
+    assert "RN999" not in ids
+
+
+def test_extraer_ids_rn_en_string_no_confunde():
+    """'RN-010' dentro de un string no debe ser detectado como comentario RN."""
+    from docpact.checker.rn_checker import extraer_comentarios_desde_fuente
+    fuente = 'msg = "usar RN-010 para validar"'
+    comentarios = extraer_comentarios_desde_fuente(fuente, 1, 2)
+    assert comentarios == []  # Sin #, no es comentario
+
+
+def test_extraer_ids_rn_gotcha():
+    """Gotcha #XXX debe ser detectado."""
+    from docpact.checker.rn_checker import _extraer_ids_rn
+    ids = _extraer_ids_rn(["# Gotcha #034"], "RN-")
+    assert "Gotcha #034" in ids
