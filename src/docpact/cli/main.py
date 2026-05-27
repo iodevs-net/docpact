@@ -70,6 +70,10 @@ def main(argv: list[str] | None = None) -> int:
         "--fix", action="store_true",
         help="Auto-genera CONTRATOs para funciones sin ninguno (--strict implícito)"
     )
+    check_parser.add_argument(
+        "--min-score", type=int, default=0,
+        help="Score mínimo requerido. Falla si el score es menor (ej: --min-score 90)"
+    )
 
     # ├─ mcp
     mcp_parser = subparsers.add_parser(
@@ -322,6 +326,10 @@ def _cmd_check(args: argparse.Namespace) -> int:
     else:
         print(f"✅ 0 errores")
     print(f"\nScore: {score}/100 — {nivel}")
+
+    if args.min_score and score < args.min_score:
+        print(f"\n❌ Score {score} menor al mínimo requerido ({args.min_score})")
+        return 1
 
     # Auto-generar CONTRATOs si --fix está activo
     if args.fix:
