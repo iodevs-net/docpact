@@ -21,8 +21,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Verificador de CONTRATOS en código — sincroniza docstrings con implementación real",
     )
     parser.add_argument(
-        "--version", action="version",
-        version=f"docpact {_get_version()}"
+        "--version", action="version", version=f"docpact {_get_version()}"
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Comando")
@@ -35,44 +34,48 @@ def main(argv: list[str] | None = None) -> int:
         "path", type=str, help="Archivo o directorio a analizar"
     )
     extract_parser.add_argument(
-        "--include-private", action="store_true",
-        help="Incluir funciones privadas (prefijo _)"
+        "--include-private",
+        action="store_true",
+        help="Incluir funciones privadas (prefijo _)",
     )
     extract_parser.add_argument(
-        "--format", choices=["text", "json"], default="text",
-        help="Formato de salida"
+        "--format", choices=["text", "json"], default="text", help="Formato de salida"
     )
 
     # ├─ check  (Fase 2 — placeholder)
     check_parser = subparsers.add_parser(
         "check", help="Verifica CONTRATOS contra implementación"
     )
+    check_parser.add_argument("path", type=str, help="Archivo o directorio a verificar")
     check_parser.add_argument(
-        "path", type=str, help="Archivo o directorio a verificar"
+        "--strict",
+        action="store_true",
+        help="Falla si hay funciones públicas sin CONTRATO",
     )
     check_parser.add_argument(
-        "--strict", action="store_true",
-        help="Falla si hay funciones públicas sin CONTRATO"
+        "--config",
+        type=str,
+        default=None,
+        help="Ruta al archivo de configuración docpact.toml",
     )
     check_parser.add_argument(
-        "--config", type=str, default=None,
-        help="Ruta al archivo de configuración docpact.toml"
+        "--diff",
+        action="store_true",
+        help="Solo verificar archivos modificados vs HEAD (git diff)",
     )
     check_parser.add_argument(
-        "--diff", action="store_true",
-        help="Solo verificar archivos modificados vs HEAD (git diff)"
+        "--report", action="store_true", help="Reporte detallado con sugerencias"
     )
     check_parser.add_argument(
-        "--report", action="store_true",
-        help="Reporte detallado con sugerencias"
+        "--fix",
+        action="store_true",
+        help="Auto-genera CONTRATOs para funciones sin ninguno (--strict implícito)",
     )
     check_parser.add_argument(
-        "--fix", action="store_true",
-        help="Auto-genera CONTRATOs para funciones sin ninguno (--strict implícito)"
-    )
-    check_parser.add_argument(
-        "--min-score", type=int, default=0,
-        help="Score mínimo requerido. Falla si el score es menor (ej: --min-score 90)"
+        "--min-score",
+        type=int,
+        default=0,
+        help="Score mínimo requerido. Falla si el score es menor (ej: --min-score 90)",
     )
 
     # ├─ mcp
@@ -84,36 +87,30 @@ def main(argv: list[str] | None = None) -> int:
     init_parser = subparsers.add_parser(
         "init", help="Genera esqueletos de CONTRATO para funciones sin contrato"
     )
+    init_parser.add_argument("path", type=str, help="Archivo o directorio")
     init_parser.add_argument(
-        "path", type=str, help="Archivo o directorio"
+        "--function", type=str, default=None, help="Nombre específico de función"
     )
     init_parser.add_argument(
-        "--function", type=str, default=None,
-        help="Nombre específico de función"
+        "--batch", action="store_true", help="Procesar todo el directorio"
     )
     init_parser.add_argument(
-        "--batch", action="store_true",
-        help="Procesar todo el directorio"
+        "--force", action="store_true",
+        help="Forzar generación incluso si la función tiene docstring sin CONTRATO",
     )
 
     # ├─ run
-    run_parser = subparsers.add_parser(
-        "run", help="Verificación dinámica en sandbox"
-    )
+    run_parser = subparsers.add_parser("run", help="Verificación dinámica en sandbox")
     run_parser.add_argument(
-        "path", type=str, nargs="?",
-        help="Archivo o directorio a verificar dinámicamente"
+        "path",
+        type=str,
+        nargs="?",
+        help="Archivo o directorio a verificar dinámicamente",
     )
+    run_parser.add_argument("--tests", required=True, help="Directorio con tests")
+    run_parser.add_argument("--max-iterations", type=int, default=10)
     run_parser.add_argument(
-        "--tests", required=True,
-        help="Directorio con tests"
-    )
-    run_parser.add_argument(
-        "--max-iterations", type=int, default=10
-    )
-    run_parser.add_argument(
-        "--build", action="store_true",
-        help="Construir imagen sandbox"
+        "--build", action="store_true", help="Construir imagen sandbox"
     )
 
     # ├─ doctor
@@ -121,16 +118,13 @@ def main(argv: list[str] | None = None) -> int:
         "doctor", help="Autodiagnóstico del ecosistema"
     )
     doctor_parser.add_argument(
-        "path", type=str, nargs="?", default=".",
-        help="Raíz del proyecto"
+        "path", type=str, nargs="?", default=".", help="Raíz del proyecto"
     )
     doctor_parser.add_argument(
-        "--min-score", type=int, default=90,
-        help="Score mínimo requerido (defecto: 90)"
+        "--min-score", type=int, default=90, help="Score mínimo requerido (defecto: 90)"
     )
     doctor_parser.add_argument(
-        "--json", action="store_true",
-        help="Salida en formato JSON"
+        "--json", action="store_true", help="Salida en formato JSON"
     )
 
     args = parser.parse_args(argv)
@@ -155,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
 def _get_version() -> str:
     try:
         from docpact import __version__
+
         return __version__
     except ImportError:
         return "0.1.0-dev"
@@ -194,22 +189,24 @@ def _cmd_extract(args: argparse.Namespace) -> int:
                 print(f"⚠️  {archivo}: {e}", file=sys.stderr)
                 continue
             for r in ts_resultados:
-                resultados.append({
-                    "archivo": str(archivo),
-                    "funcion": r.get("nombre_funcion", "<desconocida>"),
-                    "tipo": "function",
-                    "linea": r.get("linea", 0),
-                    "contrato": {
-                        "input": r.get("input", {}),
-                        "output": r.get("output"),
-                        "output_descripcion": None,
-                        "side_effects": r.get("side_effects", []),
-                        "rn": r.get("rn", []),
-                        "borde": r.get("borde", []),
-                        "dependencias": r.get("dependencias", []),
-                    },
-                    "errores": [],
-                })
+                resultados.append(
+                    {
+                        "archivo": str(archivo),
+                        "funcion": r.get("nombre_funcion", "<desconocida>"),
+                        "tipo": "function",
+                        "linea": r.get("linea", 0),
+                        "contrato": {
+                            "input": r.get("input", {}),
+                            "output": r.get("output"),
+                            "output_descripcion": None,
+                            "side_effects": r.get("side_effects", []),
+                            "rn": r.get("rn", []),
+                            "borde": r.get("borde", []),
+                            "dependencias": r.get("dependencias", []),
+                        },
+                        "errores": [],
+                    }
+                )
             continue
 
         try:
@@ -223,26 +220,51 @@ def _cmd_extract(args: argparse.Namespace) -> int:
         for linea, nombre, tipo, doc in docstrings:
             tokens = tokenizar(doc)
             contrato, errores = parsear(tokens)
-            if contrato.side_effects or contrato.rn or contrato.input or contrato.output:
-                resultados.append({
-                    "archivo": str(archivo),
-                    "funcion": nombre,
-                    "tipo": tipo,
-                    "linea": linea,
-                    "contrato": {
-                        "input": {k: {"tipo": v.tipo, "descripcion": v.descripcion}
-                                  for k, v in contrato.input.items()},
-                        "output": contrato.output,
-                        "output_descripcion": contrato.output_descripcion,
-                        "side_effects": [s.descripcion for s in contrato.side_effects],
-                        "rn": [{"id": r.id, "descripcion": r.descripcion} for r in contrato.rn],
-                        "borde": [{"condicion": b.condicion, "comportamiento": b.comportamiento}
-                                  for b in contrato.borde],
-                        "dependencias": [d.ref for d in contrato.dependencias],
-                    },
-                    "errores": [{"campo": e.campo, "mensaje": e.mensaje, "sugerencia": e.sugerencia}
-                                for e in errores],
-                })
+            if (
+                contrato.side_effects
+                or contrato.rn
+                or contrato.input
+                or contrato.output
+            ):
+                resultados.append(
+                    {
+                        "archivo": str(archivo),
+                        "funcion": nombre,
+                        "tipo": tipo,
+                        "linea": linea,
+                        "contrato": {
+                            "input": {
+                                k: {"tipo": v.tipo, "descripcion": v.descripcion}
+                                for k, v in contrato.input.items()
+                            },
+                            "output": contrato.output,
+                            "output_descripcion": contrato.output_descripcion,
+                            "side_effects": [
+                                s.descripcion for s in contrato.side_effects
+                            ],
+                            "rn": [
+                                {"id": r.id, "descripcion": r.descripcion}
+                                for r in contrato.rn
+                            ],
+                            "borde": [
+                                {
+                                    "condicion": b.condicion,
+                                    "comportamiento": b.comportamiento,
+                                }
+                                for b in contrato.borde
+                            ],
+                            "dependencias": [d.ref for d in contrato.dependencias],
+                        },
+                        "errores": [
+                            {
+                                "campo": e.campo,
+                                "mensaje": e.mensaje,
+                                "sugerencia": e.sugerencia,
+                            }
+                            for e in errores
+                        ],
+                    }
+                )
 
     if args.format == "json":
         print(json.dumps(resultados, indent=2, ensure_ascii=False))
@@ -277,6 +299,7 @@ def _print_contrato_texto(r: dict) -> None:
         try:
             from docpact.checker.rn_registry import cargar_registro
             from pathlib import Path
+
             _path = Path(r["archivo"]).resolve()
             _root = None
             for _p in [_path] + list(_path.parents):
@@ -354,26 +377,40 @@ def _cmd_check(args: argparse.Namespace) -> int:
     if args.fix:
         from docpact.cli.init import init_function
         from pathlib import Path as _Path
+
         _generados = 0
         _omitidos = 0
         for archivo_result in resultado.archivos:
             for func in archivo_result.funciones:
                 if not func.tiene_contrato:
-                    exito, msg = init_function(_Path(archivo_result.archivo), func.nombre, safe=True)
-                    if exito:
-                        print(f"  ✅ Auto-generado: {func.nombre} ({archivo_result.archivo})")
-                        _generados += 1
-                    else:
+                    try:
+                        exito, msg = init_function(
+                            _Path(archivo_result.archivo), func.nombre, safe=True
+                        )
+                        if exito:
+                            print(
+                                f"  ✅ Auto-generado: {func.nombre} ({archivo_result.archivo})"
+                            )
+                            _generados += 1
+                        else:
+                            _omitidos += 1
+                    except (SyntaxError, Exception) as e:
+                        print(
+                            f"  ⚠️ Error en {func.nombre} ({archivo_result.archivo}): {e}"
+                        )
                         _omitidos += 1
         if _generados > 0:
             print(f"\n🔧 {_generados} CONTRATOS generados automáticamente")
         if _omitidos > 0:
-            print(f"⏭️  {_omitidos} funciones omitidas (tienen docstring sin CONTRATO, usa --force en init)")
+            print(
+                f"⏭️  {_omitidos} funciones omitidas (tienen docstring sin CONTRATO, usa --force en init)"
+            )
 
     # Cargar registro RN para enriquecer reporte
     _rn_registro: dict[str, str] = {}
     try:
         from docpact.checker.rn_registry import cargar_registro
+
         _rn_registro = cargar_registro(args.path)
     except Exception:
         pass
@@ -413,10 +450,15 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
 
     if args.json:
         import json
+
         data = {
             "checks": [
-                {"nombre": c.nombre, "estado": c.estado,
-                 "mensaje": c.mensaje, "fix": c.fix}
+                {
+                    "nombre": c.nombre,
+                    "estado": c.estado,
+                    "mensaje": c.mensaje,
+                    "fix": c.fix,
+                }
                 for c in resultado.checks
             ],
             "score": resultado.score,
@@ -437,19 +479,21 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
 def _cmd_mcp(args: argparse.Namespace) -> int:
     """Comando mcp: inicia el MCP server para agentes."""
     from docpact.mcp_server import main as mcp_main
-    return mcp_main()
 
+    return mcp_main()
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
     """Comando run: verificación dinámica en sandbox."""
     from docpact.runner import main as runner_main
+
     argv = [args.path, "--tests", args.tests]
     if getattr(args, "max_iterations", None):
         argv += ["--max-iterations", str(args.max_iterations)]
     if getattr(args, "build", False):
         argv += ["--build"]
     return runner_main(argv)
+
 
 def _cmd_init(args: argparse.Namespace) -> int:
     """Comando init: genera esqueletos de CONTRATO para funciones sin contrato."""
@@ -477,8 +521,13 @@ def _cmd_init(args: argparse.Namespace) -> int:
 def _es_excluido(path: Path) -> bool:
     """Verifica si un path debe ser excluido."""
     excluidos = {
-        "__pycache__", ".venv", "venv", "node_modules",
-        ".git", "migrations", ".pytest_cache",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "node_modules",
+        ".git",
+        "migrations",
+        ".pytest_cache",
     }
     for parte in path.parts:
         if parte in excluidos:

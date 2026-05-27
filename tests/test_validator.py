@@ -1,6 +1,7 @@
 """Tests del validador de CONTRATO."""
 
 from docpact.models.contrato import (
+    CampoInput,
     CasoBorde,
     Contrato,
     Dependencia,
@@ -118,3 +119,34 @@ def test_validar_rn_con_id_demasiado_corto():
     errores = validar(c)
     assert len(errores) >= 1
     assert "rn" in errores[0].campo
+
+
+def test_validar_input_invalido():
+    """Input con tipo vacío debe generar error en campo input."""
+    c = Contrato(
+        side_effects=[SideEffect("ninguno")],
+        input={"param1": CampoInput(nombre="param1", tipo="")},
+    )
+    errores = validar(c)
+    assert len(errores) == 1
+    assert "input" in errores[0].campo
+    assert "param1" in errores[0].mensaje
+
+
+def test_validar_side_effects_vacios():
+    """Side effects con string vacío debe generar error (longitud < 2)."""
+    c = Contrato(
+        side_effects=[SideEffect("")],
+    )
+    errores = validar(c)
+    assert len(errores) == 1
+    assert "side_effects" in errores[0].campo
+
+
+def test_validar_sin_rn():
+    """Contrato sin RN (solo side_effects) debe ser válido."""
+    c = Contrato(
+        side_effects=[SideEffect("ninguno")],
+    )
+    errores = validar(c)
+    assert len(errores) == 0

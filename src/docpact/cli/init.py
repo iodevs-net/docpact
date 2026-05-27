@@ -35,15 +35,22 @@ def generar_contrato(
 
     Returns:
         El texto del bloque CONTRATO, o None si la función no existe
-        o ya tiene CONTRATO.
+        o ya tiene CONTRATO, o si el archivo no es Python.
     """
     path = Path(archivo)
     if not path.exists():
         return None
 
+    # Solo soportamos Python para AST — TS/TSX/JSX usan ts_parser
+    if path.suffix in (".ts", ".tsx", ".jsx"):
+        return None
+
     with open(path, "r", encoding="utf-8") as f:
         fuente = f.read()
-    tree = ast.parse(fuente, filename=str(path))
+    try:
+        tree = ast.parse(fuente, filename=str(path))
+    except SyntaxError:
+        return None
 
     # Buscar la función
     nodo = _buscar_funcion(tree, nombre_funcion)
@@ -92,7 +99,9 @@ def _es_trivial(
         if isinstance(stmt, ast.Pass):
             continue
         if isinstance(stmt, ast.Return):
-            if stmt.value is not None and not isinstance(stmt.value, (ast.Constant, ast.Attribute, ast.Name)):
+            if stmt.value is not None and not isinstance(
+                stmt.value, (ast.Constant, ast.Attribute, ast.Name)
+            ):
                 return False  # return con expresión compleja
             continue
         if isinstance(stmt, ast.Assign):
@@ -120,7 +129,7 @@ def _generar_bloque(
     # Trivial: solo side_effects + rn, sin input/output
     if _es_trivial(node):
         lines.append("    side_effects: ninguno")
-        lines.append('    rn: []')
+        lines.append("    rn: []")
         return "\n".join(lines)
 
     # Input: parámetros con sus type hints
@@ -150,7 +159,7 @@ def _generar_bloque(
         lines.append("    side_effects: ninguno")
 
     # RN: vacío (el agente debe completar con la RN correcta)
-    lines.append('    rn: []  # completar con RN-XXX de docs/reglas-del-negocio/')
+    lines.append("    rn: []  # completar con RN-XXX de docs/reglas-del-negocio/")
 
     # Dependencias: detectar imports locales del módulo
     deps = _detectar_dependencias(fuente, path)
@@ -304,7 +313,7 @@ def _insertar_contrato_en_docstring(
             lineas[node.lineno - 1] = sig + ":"
             # Insertar el body después del docstring
             body_indent = indent  # misma indent que el docstring
-            doc_lines.append(f'{body_indent}{body_part}')
+            doc_lines.append(f"{body_indent}{body_part}")
         insert_line = node.lineno  # después de la línea def (0-based)
         doc_lines.reverse()
         for dl in doc_lines:
@@ -331,10 +340,17 @@ def init_function(
     if not path.exists():
         return False, f"Archivo no encontrado: {archivo}"
 
+    # Solo soportamos Python para AST — TS/TSX/JSX usan ts_parser
+    if path.suffix in (".ts", ".tsx", ".jsx"):
+        return False, f"Archivo no soportado para generación automática: {archivo}"
+
     with open(path, "r", encoding="utf-8") as f:
         fuente = f.read()
 
-    tree = ast.parse(fuente, filename=str(path))
+    try:
+        tree = ast.parse(fuente, filename=str(path))
+    except SyntaxError as e:
+        return False, f"Error de sintaxis en {archivo}: {e}"
     nodo = _buscar_funcion(tree, nombre_funcion)
 
     if nodo is None:
@@ -347,10 +363,15 @@ def init_function(
 
     # Modo safe: saltar funciones con docstring existente (sin CONTRATO)
     if safe and doc.strip():
-        return False, f"'{nombre_funcion}' tiene docstring existente sin CONTRATO (usá --force para agregar)"
+        return (
+            False,
+            f"'{nombre_funcion}' tiene docstring existente sin CONTRATO (usá --force para agregar)",
+        )
 
     bloque = _generar_bloque(nodo, nombre_funcion, fuente, path)
-    exito, nueva_fuente = _insertar_contrato_en_docstring(fuente, nodo, nombre_funcion, bloque)
+    exito, nueva_fuente = _insertar_contrato_en_docstring(
+        fuente, nodo, nombre_funcion, bloque
+    )
     if not exito:
         return False, f"'{nombre_funcion}': {nueva_fuente}"
 
@@ -414,8 +435,13 @@ def init_batch(
 
 def _es_excluido(path: Path) -> bool:
     excluidos = {
-        "__pycache__", ".venv", "venv", "node_modules",
-        ".git", "migrations", ".pytest_cache",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "node_modules",
+        ".git",
+        "migrations",
+        ".pytest_cache",
     }
     for parte in path.parts:
         if parte in excluidos:
