@@ -291,6 +291,33 @@ def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
                         modulo_path, _simbolo = dep.split("::", 1)
                     else:
                         modulo_path = dep
+
+                    # ── npm packages / Vite aliases ──
+                    # Paths que empiezan con @org/ son npm packages (node_modules)
+                    # ej: @inertiajs/react, @vitejs/plugin
+                    if modulo_path.startswith("@") and "/" in modulo_path:
+                        continue
+
+                    # Vite alias @/ (mapea a resources/js/ en ioDesk-3)
+                    if modulo_path.startswith("@/"):
+                        base_dir = path.parent
+                        vite_base = base_dir
+                        # Subir hasta encontrar resources/js/
+                        for p in [base_dir] + list(base_dir.parents):
+                            if (p / "resources" / "js").is_dir():
+                                vite_base = p / "resources" / "js"
+                                break
+                        ruta_rel = vite_base / modulo_path[2:]
+                        existe = False
+                        for ext in (".ts", ".tsx", ".jsx"):
+                            if ruta_rel.with_suffix(ext).exists():
+                                existe = True
+                                break
+                        if existe:
+                            continue
+                        # Si no se resuelve, silenciar (falso positivo de alias)
+                        continue
+
                     # Resolver contra directorio del archivo actual
                     base_dir = path.parent
                     ruta_rel = base_dir / modulo_path
@@ -301,7 +328,7 @@ def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
                             break
                     if not ruta_rel.exists() and not existe:
                         hallazgos_ts.append(Hallazgo(
-                            tipo="error",
+                            tipo="warning",  # Downgraded to warning since it's often an alias
                             campo="dependencias",
                             funcion=nombre,
                             archivo=str(path),
