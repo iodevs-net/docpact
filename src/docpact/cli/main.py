@@ -1,7 +1,7 @@
 """CLI de docpact — punto de entrada principal.
 
 Comandos:
-  extract   Extrae CONTRATOS de archivos Python
+  extract   Extrae CONTRATOS de archivos Python/TypeScript
   check     Verifica CONTRATOS (Fase 2)
   init      Genera esqueletos de CONTRATO (Fase 4)
 """
@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # ├─ extract
     extract_parser = subparsers.add_parser(
-        "extract", help="Extrae CONTRATOS de archivos Python"
+        "extract", help="Extrae CONTRATOS de archivos Python/TypeScript/JSX"
     )
     extract_parser.add_argument(
         "path", type=str, help="Archivo o directorio a analizar"

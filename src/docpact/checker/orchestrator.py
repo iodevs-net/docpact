@@ -31,6 +31,7 @@ from docpact.parser.extractor import extraer_docstrings
 from docpact.parser.lexer import tokenizar
 from docpact.parser.parser import parsear
 from docpact.parser.ts_parser import extraer_contratos_ts
+from docpact.checker.ts_sidefx import check_side_effects_ts
 
 @dataclass
 class Hallazgo:
@@ -251,13 +252,37 @@ def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
                 ],
             ))
         elif tiene_contrato:
+            # Leer codigo fuente y verificar side_effects
+            try:
+                lineas_fn = path.read_text(encoding="utf-8").splitlines()
+                # Desde la linea del CONTRATO hasta fin de archivo o proximo CONTRATO
+                inicio = c.get("linea", 1) - 1
+                codigo_fn = "\n".join(lineas_fn[inicio:])
+                se_declarados = c.get("side_effects", [])
+                if isinstance(se_declarados, str):
+                    se_declarados = [se_declarados]
+                err_sidefx = check_side_effects_ts(codigo_fn, se_declarados)
+            except Exception:
+                err_sidefx = []
+
+            hallazgos_ts = []
+            for msg in err_sidefx:
+                hallazgos_ts.append(Hallazgo(
+                    tipo="error",
+                    campo="side_effects",
+                    funcion=nombre,
+                    archivo=str(path),
+                    linea=c.get("linea", 0),
+                    mensaje=msg,
+                ))
+
             resultado.funciones.append(ResultadoFuncion(
                 nombre=nombre,
                 archivo=str(path),
                 linea=c.get("linea", 0),
                 tiene_contrato=True,
+                hallazgos=hallazgos_ts,
             ))
-
     return resultado
 
 
