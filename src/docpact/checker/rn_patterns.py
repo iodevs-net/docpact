@@ -1,8 +1,11 @@
 """Verificador de patrones RN — valida logica real en el codigo.
 
 Lee la configuracion rn_patrones de docpact.toml y verifica que
-cada RN-XXX declarada en un CONTRATO tenga el patron esperado
-en el codigo marcado con # RN-XXX.
+cada RN-XXX tenga el patron esperado en el codigo.
+Solo revisa RN-XXX fuera de docstrings (ignora CONTRATOS).
+
+Esto evita falsos positivos en vistas/wrappers que declaran RN
+en su CONTRATO pero delegan la implementacion a un service.
 
 Ejemplo de config:
 [docpact.rn_patrones]
@@ -28,12 +31,31 @@ class RNPatternError(NamedTuple):
 
 
 def _extraer_rns_codigo(source: str) -> list[tuple[str, int]]:
-    """Extrae comentarios # RN-XXX y sus lineas."""
+    """Extrae comentarios # RN-XXX fuera de docstrings solamente."""
     resultados: list[tuple[str, int]] = []
-    for i, line in enumerate(source.split("\n"), 1):
-        m = re.search(r"#\s*(RN-\w+)", line)
-        if m:
-            resultados.append((m.group(1), i))
+    lines = source.split("\n")
+    dentro = False  # True si estamos dentro de un docstring triple
+
+    for i, line in enumerate(lines, 1):
+        stripped = line.strip()
+
+        # Detectar apertura/cierre de docstring """ o '''
+        for delim in ['"""', "'''"]:
+            count = stripped.count(delim)
+            if count > 0:
+                # Si count es impar: abre o cierra. Si es par: inline o nada.
+                if count % 2 == 1:
+                    dentro = not dentro
+                # Si count >= 2: apertura y cierre en misma línea (inline)
+                # no cambia estado
+                break
+        else:
+            # Solo buscar RN si no estamos dentro de docstring
+            if not dentro:
+                m = re.search(r"#\s*(RN-\w+)", line)
+                if m:
+                    resultados.append((m.group(1), i))
+
     return resultados
 
 
