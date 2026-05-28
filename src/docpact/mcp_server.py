@@ -9,10 +9,34 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import threading
 from typing import Any
 
 logger = logging.getLogger("docpact.mcp")
 logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+
+_TIMEOUT = 120  # segundos para check_proyecto
+
+
+def _exec_with_timeout(fn, timeout: int = _TIMEOUT) -> Any:
+    """Ejecuta fn en thread con timeout. TimeoutError si excede."""
+    result: list[Any] = []
+    error: list[Exception] = []
+
+    def _run():
+        try:
+            result.append(fn())
+        except Exception as e:
+            error.append(e)
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        raise TimeoutError(f"Tool excedio timeout de {timeout}s")
+    if error:
+        raise error[0]
+    return result[0]
 
 
 def _responder(id: Any, resultado: Any = None, error: Any = None) -> None:
@@ -120,8 +144,10 @@ def main() -> int:
                 args = params.get("arguments", {})
 
                 if tool_name == "docpact_check":
-                    r = check_proyecto(
-                        args.get("path", ""), strict=args.get("strict", False)
+                    r = _exec_with_timeout(
+                        lambda: check_proyecto(
+                            args.get("path", ""), strict=args.get("strict", False)
+                        )
                     )
                     _responder(
                         req_id,
@@ -144,7 +170,9 @@ def main() -> int:
                     _responder(req_id, _tool_result(cs))
 
                 elif tool_name == "docpact_score":
-                    r = check_proyecto(args.get("path", ""))
+                    r = _exec_with_timeout(
+                        lambda: check_proyecto(args.get("path", ""))
+                    )
                     _responder(
                         req_id,
                         _tool_result({

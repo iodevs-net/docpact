@@ -1054,62 +1054,13 @@ def _check_signature(
     hallazgos: list[Hallazgo],
     tiene_future_annotations: bool = False,
 ) -> None:
-    """Verifica que input/output del CONTRATO coincidan con la firma real."""
-    import inspect
+    """DEPRECATED: Verificación de firma desactivada (F2).
 
-    # Verificar que input del CONTRATO tenga al menos los parametros de la funcion
-    params_contrato = (
-        {c.nombre for c in contrato.input.values()} if contrato.input else set()
-    )
-    params_reales = {arg.arg for arg in node.args.args if arg.arg != "self"}
-
-    # Parametros en la firma pero no en el CONTRATO
-    if params_reales and contrato.input is not None:
-        faltantes = params_reales - params_contrato
-        if faltantes:
-            for p in sorted(faltantes):
-                hallazgos.append(
-                    Hallazgo(
-                        tipo="warning",
-                        campo="input",
-                        funcion=nombre,
-                        archivo=archivo,
-                        linea=node.lineno,
-                        mensaje=f"Parametro '{p}' en firma de funcion pero no declarado en input del CONTRATO",
-                        sugerencia=f"Agregar '{p}: type — desc' en input del CONTRATO",
-                    )
-                )
-
-    # Verificar output del CONTRATO vs return annotation
-    # Con from __future__ import annotations, todas las anotaciones son strings
-    # y la comparación de tipos no es confiable
-    if (
-        contrato.output
-        and hasattr(node, "returns")
-        and node.returns is not None
-        and not tiene_future_annotations
-    ):
-        try:
-            return_type = ast.unparse(node.returns)
-            contrato_out = contrato.output
-            if (
-                contrato_out
-                and contrato_out.lower() not in return_type.lower()
-                and return_type.lower() not in contrato_out.lower()
-            ):
-                hallazgos.append(
-                    Hallazgo(
-                        tipo="info",
-                        campo="output",
-                        funcion=nombre,
-                        archivo=archivo,
-                        linea=node.lineno,
-                        mensaje=f"Output del CONTRATO ('{contrato_out}') difiere del type hint ('{return_type}')",
-                        sugerencia="Verificar que coincidan o que la diferencia sea intencional",
-                    )
-                )
-        except Exception:
-            pass
+    Generaba falsos positivos con tipos dinámicos (Any, object) y
+    from __future__ import annotations. La verificación real de tipos
+    se delega a mypy/pyright. Se mantiene el stub para no romper llamadas.
+    """
+    return
 
 
 def _find_project_root(archivo: str) -> Optional[Path]:
