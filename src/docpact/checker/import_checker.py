@@ -39,6 +39,7 @@ def check_inline_imports(
         return errores
 
     import textwrap
+
     try:
         codigo_dedent = textwrap.dedent(codigo)
         tree = ast.parse(codigo_dedent)
@@ -64,7 +65,9 @@ def check_inline_imports(
         for alias in node.names:
             # Chequear tanto el nombre original importado como el alias local
             nombre_coincide = alias.name in simbolos_contrato
-            alias_coincide = alias.asname is not None and alias.asname in simbolos_contrato
+            alias_coincide = (
+                alias.asname is not None and alias.asname in simbolos_contrato
+            )
 
             if not nombre_coincide and not alias_coincide:
                 continue
@@ -77,18 +80,20 @@ def check_inline_imports(
             else:
                 import_repr = f"from {modulo} import {alias.name}"
 
-            errores.append(ErrorParser(
-                campo="dependencias",
-                mensaje=(
-                    f"Import local '{import_repr}' "
-                    f"duplica dependencia del CONTRATO. "
-                    f"NO eliminar el import — el CONTRATO no lo reemplaza."
-                ),
-                linea=linea_real,
-                sugerencia=(
-                    f"Mantener '{import_repr}' "
-                    f"aunque {alias.name} esté en las dependencias del CONTRATO"
-                ),
-            ))
+            errores.append(
+                ErrorParser(
+                    campo="dependencias",
+                    mensaje=(
+                        f"Import local '{import_repr}' "
+                        f"duplica dependencia del CONTRATO. "
+                        f"NO eliminar el import — el CONTRATO no lo reemplaza."
+                    ),
+                    linea=linea_real,
+                    sugerencia=(
+                        f"Mantener '{import_repr}' "
+                        f"aunque {alias.name} esté en las dependencias del CONTRATO"
+                    ),
+                )
+            )
 
     return errores

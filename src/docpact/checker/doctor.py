@@ -13,6 +13,7 @@ from typing import NamedTuple
 
 class DoctorCheck(NamedTuple):
     """Resultado de una verificación del doctor."""
+
     nombre: str
     estado: bool  # True = OK, False = fallo
     mensaje: str
@@ -21,14 +22,31 @@ class DoctorCheck(NamedTuple):
 
 class DoctorResult(NamedTuple):
     """Resultado completo del doctor."""
+
     checks: list[DoctorCheck]
     score: int  # 0-100, cuántos checks pasaron
 
     @property
     def ok(self) -> bool:
+        """ok — Descripción.
+
+            CONTRATO:
+            input:
+            output: bool — Descripción del retorno
+            side_effects: ninguno
+            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
+        """
         return all(c.estado for c in self.checks)
 
     def resumen(self) -> str:
+        """resumen — Descripción.
+
+            CONTRATO:
+            input:
+            output: str — Descripción del retorno
+            side_effects: ninguno
+            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
+        """
         ok = sum(1 for c in self.checks if c.estado)
         total = len(self.checks)
         return f"{ok}/{total} checks pasaron"
@@ -46,20 +64,23 @@ def check_ci_integridad(proyecto_root: Path) -> DoctorCheck:
     workflow = proyecto_root / ".github" / "workflows" / "docpact.yml"
     if not workflow.exists():
         return DoctorCheck(
-            "CI workflow", False,
+            "CI workflow",
+            False,
             "No encontrado: .github/workflows/docpact.yml",
             "Crear el workflow desde la documentacion",
         )
     content = workflow.read_text()
     if "docpact check" not in content:
         return DoctorCheck(
-            "CI workflow", False,
+            "CI workflow",
+            False,
             "Workflow no ejecuta docpact check",
             "Agregar 'docpact check . --config docpact.toml' al workflow",
         )
     if "--min-score" not in content:
         return DoctorCheck(
-            "CI workflow", True,
+            "CI workflow",
+            True,
             "Workflow existe pero sin --min-score (recomendado)",
             "Agregar --min-score 90 al comando docpact check",
         )
@@ -71,14 +92,16 @@ def check_precommit(proyecto_root: Path) -> DoctorCheck:
     config_file = proyecto_root / ".pre-commit-config.yaml"
     if not config_file.exists():
         return DoctorCheck(
-            "Pre-commit", False,
+            "Pre-commit",
+            False,
             ".pre-commit-config.yaml no encontrado",
             "Crear .pre-commit-config.yaml con entry de docpact",
         )
     content = config_file.read_text()
     if "docpact" not in content:
         return DoctorCheck(
-            "Pre-commit", False,
+            "Pre-commit",
+            False,
             ".pre-commit-config.yaml no incluye docpact",
             "Agregar repositorio docpact al config",
         )
@@ -94,25 +117,40 @@ def check_score(proyecto_root: Path, minimo: int = 90) -> DoctorCheck:
         from docpact.config import DocpactConfig
 
         config_path = proyecto_root / "docpact.toml"
-        config = DocpactConfig.desde_toml(str(config_path)) if config_path.exists() else DocpactConfig()
+        config = (
+            DocpactConfig.desde_toml(str(config_path))
+            if config_path.exists()
+            else DocpactConfig()
+        )
         resultado = check_proyecto(str(proyecto_root), config)
         score = resultado.calcular_score()
         if score >= minimo:
             return DoctorCheck("Score", True, f"Score {score} >= {minimo}")
-        return DoctorCheck("Score", False, f"Score {score} < {minimo}",
-                           "Corregir CONTRATOS para subir el score")
+        return DoctorCheck(
+            "Score",
+            False,
+            f"Score {score} < {minimo}",
+            "Corregir CONTRATOS para subir el score",
+        )
     except Exception as e:
-        return DoctorCheck("Score", False, f"Error: {e}",
-                           "Verificar que docpact esté instalado correctamente")
+        return DoctorCheck(
+            "Score",
+            False,
+            f"Error: {e}",
+            "Verificar que docpact esté instalado correctamente",
+        )
 
 
 def check_rn_registry(proyecto_root: Path) -> DoctorCheck:
     """Verifica que toda RN en REGISTRO.md tenga test existente."""
     registro = proyecto_root / "docs" / "reglas-del-negocio" / "REGISTRO.md"
     if not registro.exists():
-        return DoctorCheck("RN registry", False,
-                           "No encontrado: docs/reglas-del-negocio/REGISTRO.md",
-                           "Crear REGISTRO.md con las reglas de negocio")
+        return DoctorCheck(
+            "RN registry",
+            False,
+            "No encontrado: docs/reglas-del-negocio/REGISTRO.md",
+            "Crear REGISTRO.md con las reglas de negocio",
+        )
 
     rn_ids = set()
     for line in registro.read_text().split("\n"):
@@ -122,9 +160,12 @@ def check_rn_registry(proyecto_root: Path) -> DoctorCheck:
                     rn_ids.add(word)
 
     if not rn_ids:
-        return DoctorCheck("RN registry", False,
-                           "No se encontraron RN-XXX en REGISTRO.md",
-                           "Agregar reglas con formato RN-XXX en REGISTRO.md")
+        return DoctorCheck(
+            "RN registry",
+            False,
+            "No se encontraron RN-XXX en REGISTRO.md",
+            "Agregar reglas con formato RN-XXX en REGISTRO.md",
+        )
 
     test_dir = proyecto_root / "tests" / "rn"
     sin_test = []
@@ -136,7 +177,8 @@ def check_rn_registry(proyecto_root: Path) -> DoctorCheck:
 
     if sin_test:
         return DoctorCheck(
-            "RN registry", False,
+            "RN registry",
+            False,
             f"RNs sin test: {', '.join(sin_test)}",
             f"Crear tests/rn/test_rn_XXX.py para cada RN faltante",
         )
@@ -159,8 +201,7 @@ def _es_test_placeholder(path: Path) -> bool:
                 return False
     # Verificar que tenga al menos un test definido
     has_tests = any(
-        l.startswith("def test_") or l.startswith("class Test")
-        for l in lines
+        l.startswith("def test_") or l.startswith("class Test") for l in lines
     )
     if not has_tests:
         return True
@@ -181,7 +222,8 @@ def check_tests_placeholder(proyecto_root: Path) -> DoctorCheck:
 
     if placeholders:
         return DoctorCheck(
-            "Tests placeholder", False,
+            "Tests placeholder",
+            False,
             f"Tests placeholder: {', '.join(placeholders)}",
             "Reemplazar assert True/pass por asserts de logica real",
         )
@@ -192,11 +234,15 @@ def check_version(minima: str = "0.4.0") -> DoctorCheck:
     """Verifica que la version de docpact cumpla el minimo."""
     try:
         from docpact import __version__
+
         version = __version__
     except ImportError:
-        return DoctorCheck("Version docpact", False,
-                           "No se pudo determinar la version",
-                           "Verificar instalacion de docpact")
+        return DoctorCheck(
+            "Version docpact",
+            False,
+            "No se pudo determinar la version",
+            "Verificar instalacion de docpact",
+        )
 
     try:
         parts_min = [int(x) for x in minima.split(".")]
@@ -205,7 +251,8 @@ def check_version(minima: str = "0.4.0") -> DoctorCheck:
         ok = parts_ver >= parts_min
         estado = "OK" if ok else f"menor a {minima}"
         return DoctorCheck(
-            "Version docpact", ok,
+            "Version docpact",
+            ok,
             f"v{version} ({estado})",
             f"Actualizar docpact: pip install --upgrade docpact" if not ok else "",
         )

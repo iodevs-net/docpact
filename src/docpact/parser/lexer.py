@@ -14,6 +14,7 @@ from enum import Enum
 
 class TipoToken(Enum):
     """Tipos de token que produce el lexer."""
+
     MARCA_CONTRATO = "MARCA_CONTRATO"
     CAMPO_SIMPLE = "CAMPO_SIMPLE"
     CAMPO_COMPUESTO = "CAMPO_COMPUESTO"
@@ -25,6 +26,7 @@ class TipoToken(Enum):
 @dataclass(frozen=True)
 class Token:
     """Un token individual del bloque CONTRATO."""
+
     tipo: TipoToken
     valor: str
     linea: int
@@ -68,9 +70,7 @@ def tokenizar(docstring: str) -> list[Token]:
         if "CONTRATO:" in linea.strip():
             base_indent = len(linea) - len(linea.lstrip())
             start_idx = i
-            tokens.append(Token(
-                TipoToken.MARCA_CONTRATO, linea.strip(), i + 1, 0
-            ))
+            tokens.append(Token(TipoToken.MARCA_CONTRATO, linea.strip(), i + 1, 0))
             break
 
     if base_indent is None:
@@ -107,31 +107,25 @@ def tokenizar(docstring: str) -> list[Token]:
         if indent == nivel_campos and stripped.endswith(":"):
             # Campo compuesto (input:, output:, rn:, borde:, dependencias:)
             nombre_campo = stripped[:-1].strip()
-            tokens.append(Token(
-                TipoToken.CAMPO_COMPUESTO, nombre_campo, linea_num, indent
-            ))
+            tokens.append(
+                Token(TipoToken.CAMPO_COMPUESTO, nombre_campo, linea_num, indent)
+            )
 
-        elif indent == nivel_campos and ":" in stripped and not stripped.startswith("-"):
+        elif (
+            indent == nivel_campos and ":" in stripped and not stripped.startswith("-")
+        ):
             # Campo simple (side_effects: valor)
-            tokens.append(Token(
-                TipoToken.CAMPO_SIMPLE, stripped, linea_num, indent
-            ))
+            tokens.append(Token(TipoToken.CAMPO_SIMPLE, stripped, linea_num, indent))
 
         elif indent >= nivel_sub and stripped.startswith("-"):
             # Item de lista
-            tokens.append(Token(
-                TipoToken.ITEM_LISTA, stripped, linea_num, indent
-            ))
+            tokens.append(Token(TipoToken.ITEM_LISTA, stripped, linea_num, indent))
 
         elif indent >= nivel_sub and not stripped.startswith("-") and ":" in stripped:
             # Sub-campo (param: type)
-            tokens.append(Token(
-                TipoToken.SUB_CAMPO, stripped, linea_num, indent
-            ))
+            tokens.append(Token(TipoToken.SUB_CAMPO, stripped, linea_num, indent))
 
         else:
-            tokens.append(Token(
-                TipoToken.TEXTO_LIBRE, stripped, linea_num, indent
-            ))
+            tokens.append(Token(TipoToken.TEXTO_LIBRE, stripped, linea_num, indent))
 
     return tokens

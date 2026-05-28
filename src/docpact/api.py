@@ -113,22 +113,24 @@ def extract_contratos(
             except (FileNotFoundError, UnicodeDecodeError):
                 continue
             for r in ts_resultados:
-                resultados.append({
-                    "archivo": str(archivo),
-                    "funcion": r.get("nombre_funcion", "<desconocida>"),
-                    "tipo": "function",
-                    "linea": r.get("linea", 0),
-                    "contrato": {
-                        "input": r.get("input", {}),
-                        "output": r.get("output"),
-                        "output_descripcion": None,
-                        "side_effects": r.get("side_effects", []),
-                        "rn": r.get("rn", []),
-                        "borde": r.get("borde", []),
-                        "dependencias": r.get("dependencias", []),
-                    },
-                    "errores": [],
-                })
+                resultados.append(
+                    {
+                        "archivo": str(archivo),
+                        "funcion": r.get("nombre_funcion", "<desconocida>"),
+                        "tipo": "function",
+                        "linea": r.get("linea", 0),
+                        "contrato": {
+                            "input": r.get("input", {}),
+                            "output": r.get("output"),
+                            "output_descripcion": None,
+                            "side_effects": r.get("side_effects", []),
+                            "rn": r.get("rn", []),
+                            "borde": r.get("borde", []),
+                            "dependencias": r.get("dependencias", []),
+                        },
+                        "errores": [],
+                    }
+                )
             continue
 
         try:
@@ -139,33 +141,63 @@ def extract_contratos(
         for linea, nombre, tipo, doc in docstrings:
             tokens = tokenizar(doc)
             contrato, errores = parsear(tokens)
-            if contrato.side_effects or contrato.rn or contrato.input or contrato.output:
-                resultados.append({
-                    "archivo": str(archivo),
-                    "funcion": nombre,
-                    "tipo": tipo,
-                    "linea": linea,
-                    "contrato": {
-                        "input": {k: {"tipo": v.tipo, "descripcion": v.descripcion}
-                                  for k, v in contrato.input.items()},
-                        "output": contrato.output,
-                        "output_descripcion": contrato.output_descripcion,
-                        "side_effects": [s.descripcion for s in contrato.side_effects],
-                        "rn": [{"id": r.id, "descripcion": r.descripcion} for r in contrato.rn],
-                        "borde": [{"condicion": b.condicion, "comportamiento": b.comportamiento}
-                                  for b in contrato.borde],
-                        "dependencias": [d.ref for d in contrato.dependencias],
-                    },
-                    "errores": [{"campo": e.campo, "mensaje": e.mensaje, "sugerencia": e.sugerencia}
-                                for e in errores],
-                })
+            if (
+                contrato.side_effects
+                or contrato.rn
+                or contrato.input
+                or contrato.output
+            ):
+                resultados.append(
+                    {
+                        "archivo": str(archivo),
+                        "funcion": nombre,
+                        "tipo": tipo,
+                        "linea": linea,
+                        "contrato": {
+                            "input": {
+                                k: {"tipo": v.tipo, "descripcion": v.descripcion}
+                                for k, v in contrato.input.items()
+                            },
+                            "output": contrato.output,
+                            "output_descripcion": contrato.output_descripcion,
+                            "side_effects": [
+                                s.descripcion for s in contrato.side_effects
+                            ],
+                            "rn": [
+                                {"id": r.id, "descripcion": r.descripcion}
+                                for r in contrato.rn
+                            ],
+                            "borde": [
+                                {
+                                    "condicion": b.condicion,
+                                    "comportamiento": b.comportamiento,
+                                }
+                                for b in contrato.borde
+                            ],
+                            "dependencias": [d.ref for d in contrato.dependencias],
+                        },
+                        "errores": [
+                            {
+                                "campo": e.campo,
+                                "mensaje": e.mensaje,
+                                "sugerencia": e.sugerencia,
+                            }
+                            for e in errores
+                        ],
+                    }
+                )
     return resultados
 
 
 def _es_excluido(path: Path) -> bool:
     excluidos = {
-        "__pycache__", ".venv", "venv", "node_modules",
-        ".git", "migrations", ".pytest_cache",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "node_modules",
+        ".git",
+        "migrations",
+        ".pytest_cache",
     }
     for parte in path.parts:
         if parte in excluidos:

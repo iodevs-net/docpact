@@ -35,9 +35,9 @@ def parsear(tokens: list[Token]) -> tuple[Contrato, list[ErrorParser]]:
     errores: list[ErrorParser] = []
 
     if not tokens:
-        return Contrato(), [ErrorParser(
-            "general", "No se encontró bloque CONTRATO en el docstring"
-        )]
+        return Contrato(), [
+            ErrorParser("general", "No se encontró bloque CONTRATO en el docstring")
+        ]
 
     # Mutable accumulators
     input_fields: dict[str, CampoInput] = {}
@@ -59,11 +59,15 @@ def parsear(tokens: list[Token]) -> tuple[Contrato, list[ErrorParser]]:
         if token.tipo == TipoToken.CAMPO_COMPUESTO:
             campo = token.valor
             i, nuevos = _parsear_campo_compuesto(tokens, i + 1, campo, errores)
-            _fusionar_resultados(campo, nuevos, input_fields, rn_list, borde_list, deps_list)
+            _fusionar_resultados(
+                campo, nuevos, input_fields, rn_list, borde_list, deps_list
+            )
             continue
 
         if token.tipo == TipoToken.CAMPO_SIMPLE:
-            n, side, out_type, out_desc, datos_extra = _parsear_campo_simple(token, i, errores)
+            n, side, out_type, out_desc, datos_extra = _parsear_campo_simple(
+                token, i, errores
+            )
             i = n
             if side is not None:
                 side_effects = side
@@ -76,7 +80,14 @@ def parsear(tokens: list[Token]) -> tuple[Contrato, list[ErrorParser]]:
                         rn_list.append(ReglaNegocio(id=str(item)))
                 elif datos_extra["campo"] == "borde":
                     for item in datos_extra["items"]:
-                        borde_list.append(CasoBorde(condicion=str(item), comportamiento="" if isinstance(item, str) else str(item.get("comportamiento", ""))))
+                        borde_list.append(
+                            CasoBorde(
+                                condicion=str(item),
+                                comportamiento=""
+                                if isinstance(item, str)
+                                else str(item.get("comportamiento", "")),
+                            )
+                        )
                 elif datos_extra["campo"] == "dependencias":
                     for item in datos_extra["items"]:
                         deps_list.append(Dependencia(ref=str(item)))
@@ -100,7 +111,7 @@ def _parsear_campo_simple(
     token: Token,
     idx: int,
     errores: list[ErrorParser],
-    ) -> tuple[int, list[SideEffect] | None, str | None, str, dict[str, Any] | None]:
+) -> tuple[int, list[SideEffect] | None, str | None, str, dict[str, Any] | None]:
     """Parsea 'side_effects: valor', 'output: type — desc', o arrays JSON inline.
 
     Arrays JSON inline: rn: [RN-001], dependencias: ["a.py::X"]
@@ -109,11 +120,14 @@ def _parsear_campo_simple(
         (idx_siguiente, side_effects_list, output_type, output_desc, datos_extra)
     """
     import json
+
     partes = token.valor.split(":", 1)
     if len(partes) < 2:
-        errores.append(ErrorParser(
-            "general", f"Campo simple mal formado: {token.valor}", token.linea
-        ))
+        errores.append(
+            ErrorParser(
+                "general", f"Campo simple mal formado: {token.valor}", token.linea
+            )
+        )
         return idx + 1, None, None, "", None
 
     nombre = partes[0].strip()
@@ -143,7 +157,13 @@ def _parsear_campo_simple(
             if inner:
                 raw_items = [item.strip() for item in inner.split(",") if item.strip()]
                 if raw_items:
-                    return idx + 1, None, None, "", {"campo": nombre, "items": raw_items}
+                    return (
+                        idx + 1,
+                        None,
+                        None,
+                        "",
+                        {"campo": nombre, "items": raw_items},
+                    )
 
     return idx + 1, None, None, "", None
 
@@ -153,7 +173,7 @@ def _parsear_campo_compuesto(
     idx: int,
     campo: str,
     errores: list[ErrorParser],
-    ) -> tuple[int, dict[str, Any]]:
+) -> tuple[int, dict[str, Any]]:
     """Parsea un campo compuesto (input, rn, borde, dependencias).
 
     Returns:
@@ -179,7 +199,12 @@ def _parsear_campo_compuesto(
             elif campo == "borde":
                 partes = token.valor.split(":", 1)
                 if len(partes) >= 2:
-                    resultado["borde"].append(CasoBorde(condicion=partes[0].strip(), comportamiento=partes[1].strip()))
+                    resultado["borde"].append(
+                        CasoBorde(
+                            condicion=partes[0].strip(),
+                            comportamiento=partes[1].strip(),
+                        )
+                    )
             idx += 1
             continue
 
@@ -206,22 +231,24 @@ def _procesar_input(
         resto = partes[1].strip()
         if "—" in resto:
             tipo, desc = resto.split("—", 1)
-            resultado["input"].append(CampoInput(
-                nombre=nombre,
-                tipo=tipo.strip(),
-                descripcion=desc.strip(),
-            ))
+            resultado["input"].append(
+                CampoInput(
+                    nombre=nombre,
+                    tipo=tipo.strip(),
+                    descripcion=desc.strip(),
+                )
+            )
         else:
-            resultado["input"].append(CampoInput(
-                nombre=nombre, tipo=resto
-            ))
+            resultado["input"].append(CampoInput(nombre=nombre, tipo=resto))
     else:
-        errores.append(ErrorParser(
-            "input",
-            f"Formato inválido: '{linea}'",
-            token.linea,
-            sugerencia="Usa 'nombre: tipo — descripción'",
-        ))
+        errores.append(
+            ErrorParser(
+                "input",
+                f"Formato inválido: '{linea}'",
+                token.linea,
+                sugerencia="Usa 'nombre: tipo — descripción'",
+            )
+        )
 
 
 def _procesar_item_lista(
@@ -236,27 +263,33 @@ def _procesar_item_lista(
     if campo in ("rn", "reglas"):
         if ":" in linea:
             rid, desc = linea.split(":", 1)
-            resultado["rn"].append(ReglaNegocio(
-                id=rid.strip(),
-                descripcion=desc.strip(),
-            ))
+            resultado["rn"].append(
+                ReglaNegocio(
+                    id=rid.strip(),
+                    descripcion=desc.strip(),
+                )
+            )
         else:
             resultado["rn"].append(ReglaNegocio(id=linea))
 
     elif campo == "borde":
         if ":" in linea:
             cond, comp = linea.split(":", 1)
-            resultado["borde"].append(CasoBorde(
-                condicion=cond.strip(),
-                comportamiento=comp.strip(),
-            ))
+            resultado["borde"].append(
+                CasoBorde(
+                    condicion=cond.strip(),
+                    comportamiento=comp.strip(),
+                )
+            )
         else:
-            errores.append(ErrorParser(
-                "borde",
-                f"Caso borde sin ':' separador: '{linea}'",
-                token.linea,
-                sugerencia="Usa 'condición: comportamiento esperado'",
-            ))
+            errores.append(
+                ErrorParser(
+                    "borde",
+                    f"Caso borde sin ':' separador: '{linea}'",
+                    token.linea,
+                    sugerencia="Usa 'condición: comportamiento esperado'",
+                )
+            )
 
     elif campo == "dependencias":
         resultado["dependencias"].append(Dependencia(ref=linea))

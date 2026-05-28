@@ -40,25 +40,29 @@ def check_side_effects(
     # Caso 1: declaró "ninguno" pero hay efectos reales
     if not efectos_declarados and efectos_encontrados:
         cats = ", ".join(efectos_encontrados)
-        errores.append(ErrorParser(
-            "side_effects",
-            f"'{nombre_funcion}' declara side_effects: ninguno, "
-            f"pero se detectaron: {cats}",
-            sugerencia=f"Agrega 'side_effects: {cats}' al CONTRATO, "
-                       f"o elimina las llamadas: {', '.join(efectos_encontrados)}",
-        ))
+        errores.append(
+            ErrorParser(
+                "side_effects",
+                f"'{nombre_funcion}' declara side_effects: ninguno, "
+                f"pero se detectaron: {cats}",
+                sugerencia=f"Agrega 'side_effects: {cats}' al CONTRATO, "
+                f"o elimina las llamadas: {', '.join(efectos_encontrados)}",
+            )
+        )
 
     # Caso 2: declaró efectos pero NO se encontró NINGUNA categoría
     # (descripciones en español vs categorías técnicas son incomparables)
     # Solo advertir si hay 0 efectos encontrados siendo que se declararon
     if efectos_declarados and not efectos_encontrados:
-        errores.append(ErrorParser(
-            "side_effects",
-            f"'{nombre_funcion}': declaró side_effects pero no se "
-            f"detectaron llamadas con patrones conocidos",
-            sugerencia="Si la función delega a otros servicios, está bien. "
-                       "Agrega patrones personalizados en docpact.toml si quieres tracking fino.",
-        ))
+        errores.append(
+            ErrorParser(
+                "side_effects",
+                f"'{nombre_funcion}': declaró side_effects pero no se "
+                f"detectaron llamadas con patrones conocidos",
+                sugerencia="Si la función delega a otros servicios, está bien. "
+                "Agrega patrones personalizados en docpact.toml si quieres tracking fino.",
+            )
+        )
 
     return errores
 
@@ -81,6 +85,7 @@ def _extraer_llamadas(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]
 
     CallVisitor().visit(node)
     return llamadas
+
 
 def _ast_nombre_llamada(func_node: ast.AST) -> Optional[str]:
     """Convierte un nodo AST de función a su nombre como string.

@@ -34,7 +34,11 @@ def check_deps(
         return []
 
     errores: list[ErrorParser] = []
-    base_dir = Path(archivo_base).parent if isinstance(archivo_base, (str, Path)) else Path(".")
+    base_dir = (
+        Path(archivo_base).parent
+        if isinstance(archivo_base, (str, Path))
+        else Path(".")
+    )
 
     for dep in contrato.dependencias:
         ref = dep.ref.strip()
@@ -50,13 +54,15 @@ def check_deps(
         ruta_modulo = _resolver_ruta(modulo_path, base_dir)
 
         if not ruta_modulo.exists():
-            errores.append(ErrorParser(
-                "dependencias",
-                f"'{nombre_funcion}': dependencia '{ref}' — "
-                f"archivo '{ruta_modulo}' no encontrado",
-                sugerencia=f"Verifica la ruta: '{modulo_path}' "
-                           f"(buscado desde {base_dir})",
-            ))
+            errores.append(
+                ErrorParser(
+                    "dependencias",
+                    f"'{nombre_funcion}': dependencia '{ref}' — "
+                    f"archivo '{ruta_modulo}' no encontrado",
+                    sugerencia=f"Verifica la ruta: '{modulo_path}' "
+                    f"(buscado desde {base_dir})",
+                )
+            )
             continue
 
         # Si hay símbolo, verificar que exista en el módulo
@@ -157,11 +163,13 @@ def _verificar_simbolo(
                     encontrado = True
 
     if not encontrado:
-        errores.append(ErrorParser(
-            "dependencias",
-            f"'{nombre_funcion}': símbolo '{simbolo}' no encontrado "
-            f"en '{ruta_modulo}'",
-            sugerencia=f"Verifica que '{simbolo}' exista en '{ruta_modulo}'",
-        ))
+        errores.append(
+            ErrorParser(
+                "dependencias",
+                f"'{nombre_funcion}': símbolo '{simbolo}' no encontrado "
+                f"en '{ruta_modulo}'",
+                sugerencia=f"Verifica que '{simbolo}' exista en '{ruta_modulo}'",
+            )
+        )
 
     return errores

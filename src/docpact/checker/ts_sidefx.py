@@ -10,17 +10,17 @@ import re
 
 # Patrones de llamadas que constituyen side effects en TS
 _PATRONES: list[re.Pattern[str]] = [
-    re.compile(r'api\.(?:post|put|delete|get)\s*\('),
-    re.compile(r'axios\.(?:post|get|put|delete)\s*\('),
-    re.compile(r'client\.(?:post|put|delete)\s*\('),
-    re.compile(r'\bfetch\s*\('),
-    re.compile(r'\.(?:create|save|update|delete)\s*\('),
-    re.compile(r'\bmutate\s*\('),
+    re.compile(r"api\.(?:post|put|delete|get)\s*\("),
+    re.compile(r"axios\.(?:post|get|put|delete)\s*\("),
+    re.compile(r"client\.(?:post|put|delete)\s*\("),
+    re.compile(r"\bfetch\s*\("),
+    re.compile(r"\.(?:create|save|update|delete)\s*\("),
+    re.compile(r"\bmutate\s*\("),
     # Inertia router (SPA navigation que muta estado en servidor)
-    re.compile(r'router\.(?:get|post|put|delete|patch|reload)\s*\('),
-    re.compile(r'router\.visit\s*\('),
+    re.compile(r"router\.(?:get|post|put|delete|patch|reload)\s*\("),
+    re.compile(r"router\.visit\s*\("),
     # window.open = navegación a URL de backend
-    re.compile(r'window\.open\s*\('),
+    re.compile(r"window\.open\s*\("),
 ]
 
 
@@ -34,9 +34,7 @@ def _tiene_llamadas_sidefx(codigo: str) -> bool:
 
 def _declaro_ninguno(declarados: list[str]) -> bool:
     """Retorna True si la lista equivale a 'ninguno'."""
-    return not declarados or any(
-        d.strip().lower() == "ninguno" for d in declarados
-    )
+    return not declarados or any(d.strip().lower() == "ninguno" for d in declarados)
 
 
 def check_side_effects_ts(

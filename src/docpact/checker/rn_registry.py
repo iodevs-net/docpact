@@ -20,9 +20,7 @@ def cargar_registro(project_root: str | Path) -> dict[str, str]:
     content = ruta.read_text(encoding="utf-8")
     resultados: dict[str, str] = {}
 
-    for match in re.finditer(
-        r"\|\s*(RN-[\w-]+)\s*\|\s*([^|]+)", content
-    ):
+    for match in re.finditer(r"\|\s*(RN-[\w-]+)\s*\|\s*([^|]+)", content):
         rn_id = match.group(1).strip()
         desc = match.group(2).strip().replace("`", "")
         if rn_id and desc:

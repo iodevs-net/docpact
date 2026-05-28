@@ -17,7 +17,7 @@ from docpact.models.contrato import ErrorParser
 def _normalizar_rn_id(rn_id: str, prefijo: str = "RN-") -> str | None:
     rn_id = rn_id.strip()
     if rn_id.startswith(prefijo):
-        return rn_id[len(prefijo):]
+        return rn_id[len(prefijo) :]
     return None
 
 
@@ -42,13 +42,15 @@ def check_rn_tests(
             continue
         test_file = test_dir / f"test_rn_{numero}.py"
         if not test_file.exists():
-            errores.append(ErrorParser(
-                "rn_tests",
-                f"'{nombre_funcion}': RN '{rn_id}' declarada en CONTRATO "
-                f"pero no existe test en {test_file}",
-                sugerencia=f"Crea {test_file} con Hypothesis PBT "
-                          f"y escribe # {rn_id} en el docstring del test.",
-            ))
+            errores.append(
+                ErrorParser(
+                    "rn_tests",
+                    f"'{nombre_funcion}': RN '{rn_id}' declarada en CONTRATO "
+                    f"pero no existe test en {test_file}",
+                    sugerencia=f"Crea {test_file} con Hypothesis PBT "
+                    f"y escribe # {rn_id} en el docstring del test.",
+                )
+            )
     return errores
 
 
@@ -77,9 +79,19 @@ def check_rn_tests_pasan(
 
         try:
             result = subprocess.run(
-                ["python3", "-m", "pytest", str(test_file),
-                 "-q", "--tb=line", "--no-header", "--reuse-db"],
-                capture_output=True, text=True, timeout=120,
+                [
+                    "python3",
+                    "-m",
+                    "pytest",
+                    str(test_file),
+                    "-q",
+                    "--tb=line",
+                    "--no-header",
+                    "--reuse-db",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
                 cwd=str(proyecto_root),
             )
         except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -88,7 +100,10 @@ def check_rn_tests_pasan(
         if result.returncode != 0:
             output = result.stdout + result.stderr
             # Errores de entorno (no del test): skip
-            if any(x in output for x in ("No tests collected", "Traceback", "ModuleNotFoundError")):
+            if any(
+                x in output
+                for x in ("No tests collected", "Traceback", "ModuleNotFoundError")
+            ):
                 continue
             fallo = ""
             for line in output.splitlines():
@@ -98,10 +113,11 @@ def check_rn_tests_pasan(
             if not fallo:
                 lines = result.stdout.strip().splitlines()
                 fallo = lines[-1] if lines else "fallo desconocido"
-            errores.append(ErrorParser(
-                "rn_tests",
-                f"'{nombre_funcion}': RN '{rn_id}' — "
-                f"test FALLÓ: {fallo[:200]}",
-                sugerencia=f"Corrige la regla o el test en {test_file}",
-            ))
+            errores.append(
+                ErrorParser(
+                    "rn_tests",
+                    f"'{nombre_funcion}': RN '{rn_id}' — test FALLÓ: {fallo[:200]}",
+                    sugerencia=f"Corrige la regla o el test en {test_file}",
+                )
+            )
     return errores

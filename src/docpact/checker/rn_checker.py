@@ -42,13 +42,15 @@ def check_rn(
     errores: list[ErrorParser] = []
     for rn in contrato.rn:
         if rn.id not in ids_en_codigo:
-            errores.append(ErrorParser(
-                "rn",
-                f"'{nombre_funcion}': RN '{rn.id}' declarada en CONTRATO "
-                f"pero no encontrada como comentario en el código",
-                sugerencia=f"Agrega '# {rn.id}' como comentario en el lugar "
-                           f"donde se implementa la regla",
-            ))
+            errores.append(
+                ErrorParser(
+                    "rn",
+                    f"'{nombre_funcion}': RN '{rn.id}' declarada en CONTRATO "
+                    f"pero no encontrada como comentario en el código",
+                    sugerencia=f"Agrega '# {rn.id}' como comentario en el lugar "
+                    f"donde se implementa la regla",
+                )
+            )
 
     return errores
 
@@ -59,7 +61,7 @@ def _extraer_comentarios(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[s
     ast no preserva comentarios directamente. Extraemos las líneas fuente
     que contienen '#' del cuerpo de la función.
     """
-    if not hasattr(node, 'end_lineno') or node.end_lineno is None:
+    if not hasattr(node, "end_lineno") or node.end_lineno is None:
         return []
 
     # No podemos extraer comentarios del AST puro porque Python los descarta.
@@ -96,7 +98,7 @@ def _extraer_ids_rn(
     prefijo: str = "RN-",
 ) -> list[str]:
     """Extrae IDs de reglas de negocio de comentarios.
-    
+
     Soporta formatos:
     - RN-XXX (RN-004, RN-005)
     - RN-XXX-XXX (RN-SEG-005, RN-C-016)

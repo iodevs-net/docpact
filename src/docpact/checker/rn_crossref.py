@@ -58,8 +58,8 @@ def _extraer_llamadas(codigo: str) -> set[str]:
 
 
 def _tiene_rn_en_codigo(codigo: str, rn_id: str) -> bool:
-    """Verifica si el codigo contiene # RN-XXX."""
-    return f"# {rn_id}" in codigo
+    """Verifica si el codigo contiene # RN-XXX con borde de palabra."""
+    return bool(re.search(rf"#\s*{re.escape(rn_id)}\b", codigo))
 
 
 def verificar_cross_reference(

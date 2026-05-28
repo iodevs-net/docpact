@@ -13,6 +13,7 @@ from typing import Optional
 
 class TipoFuncion(Enum):
     """Tipo de símbolo donde se encontró el CONTRATO."""
+
     FUNCTION = "function"
     METHOD = "method"
     CLASS = "class"
@@ -21,6 +22,7 @@ class TipoFuncion(Enum):
 @dataclass(frozen=True)
 class CampoInput:
     """Declaración de un parámetro de entrada en el CONTRATO."""
+
     nombre: str
     tipo: str
     descripcion: str = ""
@@ -29,12 +31,14 @@ class CampoInput:
 @dataclass(frozen=True)
 class SideEffect:
     """Declaración de un side effect."""
+
     descripcion: str
 
 
 @dataclass(frozen=True)
 class ReglaNegocio:
     """Declaración de una regla de negocio referenciada."""
+
     id: str  # ej: "RN-010"
     descripcion: str = ""
 
@@ -42,6 +46,7 @@ class ReglaNegocio:
 @dataclass(frozen=True)
 class CasoBorde:
     """Declaración de un caso borde."""
+
     condicion: str
     comportamiento: str
 
@@ -49,6 +54,7 @@ class CasoBorde:
 @dataclass(frozen=True)
 class Dependencia:
     """Declaración de una dependencia externa."""
+
     ref: str  # ej: "soporte/models/ticket.py::Ticket"
 
 
@@ -59,6 +65,7 @@ class Contrato:
     Campos opcionales son None si no se declararon en el docstring.
     side_effects es obligatorio — si no se declara, es lista vacía con advertencia.
     """
+
     input: dict[str, CampoInput] = field(default_factory=dict)
     output: Optional[str] = None
     output_descripcion: str = ""
@@ -80,7 +87,9 @@ class Contrato:
         if self.output:
             partes.append(f"output: {self.output}")
         if self.side_effects:
-            partes.append(f"side_effects({len(self.side_effects)}): {', '.join(s.descripcion[:30] for s in self.side_effects)}")
+            partes.append(
+                f"side_effects({len(self.side_effects)}): {', '.join(s.descripcion[:30] for s in self.side_effects)}"
+            )
         else:
             partes.append("side_effects: ninguno")
         if self.rn:
@@ -91,6 +100,7 @@ class Contrato:
 @dataclass(frozen=True)
 class ErrorParser:
     """Error encontrado durante parseo o validación."""
+
     campo: str  # nombre del campo donde ocurre, o "general"
     mensaje: str
     linea: int = 0
@@ -103,6 +113,7 @@ class ErrorParser:
 @dataclass(frozen=True)
 class ContratoExtraido:
     """Resultado completo de la extracción de un CONTRATO de un archivo."""
+
     funcion: str
     tipo: TipoFuncion
     archivo: str

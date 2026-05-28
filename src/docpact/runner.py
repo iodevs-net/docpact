@@ -163,17 +163,25 @@ def run_sandbox(
     mount_code = f"{code_path}:{WORKDIR}/code.py:ro"
 
     cmd: list[str] = [
-        "docker", "run", "--rm",
+        "docker",
+        "run",
+        "--rm",
         "--cap-drop=ALL",
         "--network=none",
         "--security-opt=no-new-privileges",
         "--read-only",
-        "--tmpfs", "/tmp:size=64M",
-        "--user", "1001:1001",
-        "--memory", "256m",
-        "--cpus", "0.5",
-        "-v", mount_test,
-        "-v", mount_code,
+        "--tmpfs",
+        "/tmp:size=64M",
+        "--user",
+        "1001:1001",
+        "--memory",
+        "256m",
+        "--cpus",
+        "0.5",
+        "-v",
+        mount_test,
+        "-v",
+        mount_code,
     ]
 
     if env:
@@ -196,7 +204,8 @@ def run_sandbox(
         result.tamper_detected = True
 
     result.stderr = "\n".join(
-        line for line in (result.stderr or "").splitlines()
+        line
+        for line in (result.stderr or "").splitlines()
         if "/workspace/tests" not in line
     )
     return result

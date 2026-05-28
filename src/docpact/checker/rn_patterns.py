@@ -19,6 +19,7 @@ from typing import NamedTuple
 
 class RNPatternError(NamedTuple):
     """Error de patron RN no encontrado."""
+
     funcion: str
     archivo: str
     linea: int
@@ -73,12 +74,14 @@ def verificar_rn_patrones(
             linea_contenido = lineas[linea_local - 1]
             if not _linea_tiene_patron(linea_contenido, patron):
                 linea_abs = line_offset + linea_local - 1
-                errores.append(RNPatternError(
-                    funcion="",
-                    archivo=str(archivo),
-                    linea=linea_abs,
-                    mensaje=f"{rn_id} marcada pero no se detecto patron '{patron}' en linea {linea_abs}",
-                    sugerencia=f"Mover # {rn_id} a una linea que contenga '{patron}'",
-                ))
+                errores.append(
+                    RNPatternError(
+                        funcion="",
+                        archivo=str(archivo),
+                        linea=linea_abs,
+                        mensaje=f"{rn_id} marcada pero no se detecto patron '{patron}' en linea {linea_abs}",
+                        sugerencia=f"Mover # {rn_id} a una linea que contenga '{patron}'",
+                    )
+                )
 
     return errores

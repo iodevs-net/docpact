@@ -30,13 +30,9 @@ _RE_INPUT_PARAM = re.compile(
     r"^\s{4,}(?P<param>\w[\w\d_]*)\s*:\s*(?P<tipo>[^\s]+(?:\s*—\s*.+)?)\s*$"
 )
 
-_RE_ITEM_LISTA = re.compile(
-    r"^\s{4,}-\s+(?P<item>.+?)\s*$"
-)
+_RE_ITEM_LISTA = re.compile(r"^\s{4,}-\s+(?P<item>.+?)\s*$")
 
-_RE_ITEM_BORDE = re.compile(
-    r"^\s{4,}-\s+(?P<cond>.+?)\s*:\s*(?P<comp>.+?)\s*$"
-)
+_RE_ITEM_BORDE = re.compile(r"^\s{4,}-\s+(?P<cond>.+?)\s*:\s*(?P<comp>.+?)\s*$")
 
 _RE_CONTRATO_INICIO = re.compile(r"CONTRATO\s*:")
 
@@ -195,7 +191,8 @@ def _parsear_bloque(bloque: list[str]) -> Optional[dict[str, Any]]:
                 resultado["output"] = valor
             elif campo == "side_effects":
                 resultado["side_effects"] = (
-                    [] if valor.strip().lower() == "ninguno"
+                    []
+                    if valor.strip().lower() == "ninguno"
                     else [s.strip() for s in valor.split(",") if s.strip()]
                 )
             campo_actual = campo
@@ -204,7 +201,15 @@ def _parsear_bloque(bloque: list[str]) -> Optional[dict[str, Any]]:
 
         # ── subsección con sangría (input, rn, borde, dependencias) ──
         if re.match(r"^\s{2,}(input|rn|borde|dependencias)\s*:$", raw_linea):
-            campo_actual = m.group(1) if (m := re.match(r"^\s{2,}(input|rn|borde|dependencias)\s*:$", raw_linea)) else None
+            campo_actual = (
+                m.group(1)
+                if (
+                    m := re.match(
+                        r"^\s{2,}(input|rn|borde|dependencias)\s*:$", raw_linea
+                    )
+                )
+                else None
+            )
             en_subseccion = m.group(1) if m else None
             continue
 
@@ -236,10 +241,12 @@ def _parsear_bloque(bloque: list[str]) -> Optional[dict[str, Any]]:
                     rdesc = partes_rn[1].strip() if len(partes_rn) > 1 else ""
                     resultado["rn"].append({"id": rid, "descripcion": rdesc})
                 elif en_subseccion == "borde":
-                    resultado["borde"].append({
-                        "condicion": m.group("cond").strip(),
-                        "comportamiento": m.group("comp").strip(),
-                    })
+                    resultado["borde"].append(
+                        {
+                            "condicion": m.group("cond").strip(),
+                            "comportamiento": m.group("comp").strip(),
+                        }
+                    )
                 elif en_subseccion == "dependencias":
                     resultado["dependencias"].append(m.group("item").strip())
 
@@ -267,7 +274,12 @@ def _extraer_funcion(lineas: list[str], desde: int) -> Optional[str]:
     for i in range(desde, len(lineas)):
         linea = lineas[i].strip()
 
-        if not linea or linea.startswith("//") or linea.startswith("/*") or linea.startswith("*"):
+        if (
+            not linea
+            or linea.startswith("//")
+            or linea.startswith("/*")
+            or linea.startswith("*")
+        ):
             continue
 
         # export default function() / default function() (anonymous)
@@ -276,7 +288,9 @@ def _extraer_funcion(lineas: list[str], desde: int) -> Optional[str]:
             return "default"
 
         # function nombre(…
-        m = re.match(r"(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+(\w[\w\d_$]*)", linea)
+        m = re.match(
+            r"(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+(\w[\w\d_$]*)", linea
+        )
         if m:
             return m.group(1)
 
@@ -286,12 +300,17 @@ def _extraer_funcion(lineas: list[str], desde: int) -> Optional[str]:
             return m.group(1)
 
         # inline method inside class: class X { foo() { … }
-        m = re.match(r"(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+\w[\w\d_$]*\s*\{\s*(\w[\w\d_$]*)\s*\(", linea)
+        m = re.match(
+            r"(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+\w[\w\d_$]*\s*\{\s*(\w[\w\d_$]*)\s*\(",
+            linea,
+        )
         if m:
             return m.group(1)
 
         # class Nombre
-        m = re.match(r"(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+(\w[\w\d_$]*)", linea)
+        m = re.match(
+            r"(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+(\w[\w\d_$]*)", linea
+        )
         if m:
             return m.group(1)
 
