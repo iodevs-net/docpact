@@ -7,8 +7,12 @@ Uso: docpact mcp
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from typing import Any
+
+logger = logging.getLogger("docpact.mcp")
+logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 
 
 def _responder(id: Any, resultado: Any = None, error: Any = None) -> None:
@@ -38,10 +42,10 @@ def main() -> int:
     from docpact.api import check_file, check_proyecto, extract_contratos
     from docpact.config import DocpactConfig
 
+    logger.info("docpact MCP server started (stdio)")
     for line in sys.stdin:
         if not line.strip():
             continue
-
         try:
             msg = json.loads(line)
         except json.JSONDecodeError:
@@ -53,6 +57,7 @@ def main() -> int:
 
         # Notifications (no id) — no response needed per JSON-RPC spec
         if req_id is None:
+            logger.debug("notification: %s", method)
             continue
         try:
             if method == "initialize":
@@ -159,6 +164,7 @@ def main() -> int:
                 break
 
         except Exception as e:
+            logger.error("Error processing request #%s (%s): %s", req_id, method, e)
             _responder(req_id, error=str(e))
 
     return 0
