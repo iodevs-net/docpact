@@ -2,8 +2,10 @@
 
 Comandos:
   extract   Extrae CONTRATOS de archivos Python/TypeScript
-  check     Verifica CONTRATOS (Fase 2)
-  init      Genera esqueletos de CONTRATO (Fase 4)
+  lint      Análisis estático puro (sin pytest, < 1s)
+  test      Ejecuta tests de Reglas de Negocio con pytest
+  check     lint + test combinados (comportamiento legacy)
+  init      Genera esqueletos de CONTRATO
 """
 
 from __future__ import annotations
@@ -83,6 +85,42 @@ def main(argv: list[str] | None = None) -> int:
         help="Desactiva la ejecución de tests dinámicos de Reglas de Negocio con pytest",
     )
 
+    # ├─ lint (análisis estático puro — sin pytest)
+    lint_parser = subparsers.add_parser(
+        "lint", help="Análisis estático puro de CONTRATOS (sin pytest, ideal para pre-commit)"
+    )
+    lint_parser.add_argument("path", type=str, help="Archivo o directorio a verificar")
+    lint_parser.add_argument(
+        "--strict", action="store_true",
+        help="Falla si hay funciones públicas sin CONTRATO",
+    )
+    lint_parser.add_argument(
+        "--config", type=str, default=None,
+        help="Ruta al archivo de configuración docpact.toml",
+    )
+    lint_parser.add_argument(
+        "--diff", action="store_true",
+        help="Solo verificar archivos modificados vs HEAD (git diff)",
+    )
+    lint_parser.add_argument(
+        "--min-score", type=int, default=0,
+        help="Score mínimo requerido (ej: --min-score 90)",
+    )
+    lint_parser.add_argument(
+        "--fix", action="store_true",
+        help="Auto-genera CONTRATOs para funciones sin ninguno (--strict implícito)",
+    )
+
+    # ├─ test (ejecución dinámica de tests RN)
+    test_parser = subparsers.add_parser(
+        "test", help="Ejecuta tests de Reglas de Negocio con pytest"
+    )
+    test_parser.add_argument("path", type=str, help="Archivo o directorio a verificar")
+    test_parser.add_argument(
+        "--config", type=str, default=None,
+        help="Ruta al archivo de configuración docpact.toml",
+    )
+
     # ├─ mcp
     mcp_parser = subparsers.add_parser(
         "mcp", help="Inicia el MCP server para agentes (JSON-RPC sobre stdio)"
@@ -138,6 +176,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_extract(args)
     elif args.command == "check":
         return _cmd_check(args)
+    elif args.command == "lint":
+        return _cmd_lint(args)
+    elif args.command == "test":
+        return _cmd_test(args)
     elif args.command == "init":
         return _cmd_init(args)
     elif args.command == "run":
@@ -447,6 +489,143 @@ def _cmd_check(args: argparse.Namespace) -> int:
         # strict mode: funciones sin CONTRATO también fallan
         return 1
     return 0
+
+
+def _cmd_lint(args: argparse.Namespace) -> int:
+    """Comando lint: análisis estático puro de CONTRATOS (sin pytest).
+
+    Ideal para pre-commit hooks. Ejecuta todo excepto tests dinámicos.
+    """
+    from docpact.config import DocpactConfig
+    from docpact.checker.orchestrator import check_proyecto
+
+    config_path = args.config
+    if not config_path:
+        config_candidates = [
+            Path(args.path) / "docpact.toml",
+            Path(args.path) / ".docpact.toml",
+            Path.cwd() / "docpact.toml",
+        ]
+        for cp in config_candidates:
+            if cp.exists():
+                config_path = str(cp)
+                break
+
+    config = DocpactConfig.desde_toml(config_path) if config_path else DocpactConfig()
+    config.run_tests = False  # Lint = estático puro, sin pytest
+
+    if args.strict or getattr(args, "fix", False):
+        config.strict = True
+
+    resultado = check_proyecto(args.path, config, diff_only=getattr(args, "diff", False))
+
+    tf = resultado.total_funciones
+    tc = resultado.funciones_con_contrato
+    te = resultado.total_errores
+    tw = resultado.total_warnings
+    score = resultado.calcular_score()
+    nivel = resultado.nivel
+
+    print(f"\n📊 {tf} funciones públicas encontradas")
+    print(f"✅ {tc} contratos válidos")
+    if tw:
+        print(f"⚠️  {tw} warnings")
+    else:
+        print(f"⚠️  0 warnings")
+    if te:
+        print(f"❌ {te} errores")
+    else:
+        print(f"✅ 0 errores")
+    print(f"\nScore: {score}/100 — {nivel}")
+
+    # Auto-fix si --fix
+    if getattr(args, "fix", False):
+        from docpact.cli.init import init_function
+        _generados = 0
+        for archivo_result in resultado.archivos:
+            for func in archivo_result.funciones:
+                if not func.tiene_contrato:
+                    try:
+                        exito, _ = init_function(
+                            Path(archivo_result.archivo), func.nombre, safe=True
+                        )
+                        if exito:
+                            print(f"  ✅ Auto-generado: {func.nombre} ({archivo_result.archivo})")
+                            _generados += 1
+                    except Exception:
+                        pass
+        if _generados > 0:
+            print(f"\n🔧 {_generados} CONTRATOS generados automáticamente")
+
+    # Mostrar errores
+    if te > 0 or tw > 0:
+        for archivo_result in resultado.archivos:
+            for func in archivo_result.funciones:
+                for h in func.hallazgos:
+                    icono = "❌" if h.tipo == "error" else "⚠️"
+                    loc = f"{archivo_result.archivo}::{h.funcion}:{h.linea}"
+                    print(f"\n{icono} {loc}")
+                    print(f"   {h.mensaje}")
+                    if h.sugerencia:
+                        print(f"   💡 {h.sugerencia}")
+
+    if getattr(args, "min_score", 0) and score < args.min_score:
+        print(f"\n❌ Score {score} menor al mínimo requerido ({args.min_score})")
+        return 1
+
+    if te > 0:
+        return 1
+    if config.strict and tf - tc > 0:
+        return 1
+    return 0
+
+
+def _cmd_test(args: argparse.Namespace) -> int:
+    """Comando test: ejecuta tests de Reglas de Negocio con pytest.
+
+    Solo busca funciones con CONTRATO que declaren rn: [RN-XXX] y ejecuta
+    los tests correspondientes en tests/rn/test_rn_XXX.py.
+    """
+    from docpact.config import DocpactConfig
+    from docpact.checker.orchestrator import check_proyecto
+
+    config_path = args.config
+    if not config_path:
+        config_candidates = [
+            Path(args.path) / "docpact.toml",
+            Path(args.path) / ".docpact.toml",
+            Path.cwd() / "docpact.toml",
+        ]
+        for cp in config_candidates:
+            if cp.exists():
+                config_path = str(cp)
+                break
+
+    config = DocpactConfig.desde_toml(config_path) if config_path else DocpactConfig()
+    config.run_tests = True
+
+    resultado = check_proyecto(args.path, config)
+
+    # Solo mostrar resultados relevantes a tests RN
+    test_errores = 0
+    for archivo_result in resultado.archivos:
+        for func in archivo_result.funciones:
+            for h in func.hallazgos:
+                if h.campo in ("rn", "rn_tests"):
+                    test_errores += 1
+                    icono = "❌" if h.tipo == "error" else "⚠️"
+                    loc = f"{archivo_result.archivo}::{h.funcion}:{h.linea}"
+                    print(f"{icono} {loc}")
+                    print(f"   {h.mensaje}")
+                    if h.sugerencia:
+                        print(f"   💡 {h.sugerencia}")
+
+    if test_errores == 0:
+        print("✅ Todos los tests de Reglas de Negocio pasaron.")
+        return 0
+    else:
+        print(f"\n❌ {test_errores} errores en tests de Reglas de Negocio.")
+        return 1
 
 
 def _cmd_doctor(args: argparse.Namespace) -> int:

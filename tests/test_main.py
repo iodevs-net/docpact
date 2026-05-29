@@ -427,3 +427,100 @@ class TestRun:
         assert main(["run", "code.py", "--tests", "tests/", "--build"]) == 0
         joined = " ".join(captured_args)
         assert "--build" in joined
+
+
+# ──────────────────────────────────────────────
+# Lint (análisis estático puro, sin pytest)
+# ──────────────────────────────────────────────
+
+
+class TestLint:
+    """Lint = check --no-run-tests (análisis estático puro)."""
+
+    def test_lint_normal(self, monkeypatch):
+        """Lint sin errores debe retornar 0."""
+        monkeypatch.setattr(
+            "docpact.checker.orchestrator.check_proyecto",
+            lambda path, config, diff_only=False: _mock_resultado(
+                archivos=[_mock_archivo()]
+            ),
+        )
+        assert main(["lint", "."]) == 0
+
+    def test_lint_con_errores(self, monkeypatch):
+        """Lint con errores debe retornar 1."""
+        monkeypatch.setattr(
+            "docpact.checker.orchestrator.check_proyecto",
+            lambda path, config, diff_only=False: _mock_resultado(
+                errores=3, score=60, nivel="L1", archivos=[_mock_archivo()]
+            ),
+        )
+        assert main(["lint", "."]) == 1
+
+    def test_lint_strict(self, monkeypatch):
+        """Lint --strict con funciones sin CONTRATO debe retornar 1."""
+        monkeypatch.setattr(
+            "docpact.checker.orchestrator.check_proyecto",
+            lambda path, config, diff_only=False: _mock_resultado(
+                total=5, con_contrato=3, archivos=[_mock_archivo()]
+            ),
+        )
+        assert main(["lint", ".", "--strict"]) == 1
+
+    def test_lint_min_score(self, monkeypatch):
+        """Lint --min-score 90 con score 80 debe retornar 1."""
+        monkeypatch.setattr(
+            "docpact.checker.orchestrator.check_proyecto",
+            lambda path, config, diff_only=False: _mock_resultado(
+                score=80, nivel="L2", archivos=[_mock_archivo()]
+            ),
+        )
+        assert main(["lint", ".", "--min-score", "90"]) == 1
+
+
+# ──────────────────────────────────────────────
+# Test (ejecución dinámica de tests RN)
+# ──────────────────────────────────────────────
+
+
+class TestTestCmd:
+    """Test = ejecución dinámica de tests de Reglas de Negocio."""
+
+    def test_test_sin_errores(self, monkeypatch):
+        """Test sin errores de RN debe retornar 0."""
+        monkeypatch.setattr(
+            "docpact.checker.orchestrator.check_proyecto",
+            lambda path, config, diff_only=False: _mock_resultado(
+                archivos=[_mock_archivo()]
+            ),
+        )
+        assert main(["test", "."]) == 0
+
+    def test_test_con_errores_rn(self, monkeypatch):
+        """Test con errores de RN debe retornar 1."""
+        func = SimpleNamespace(
+            nombre="fn_rn",
+            tiene_contrato=True,
+            errores=[],
+            warnings=[],
+            hallazgos=[
+                SimpleNamespace(
+                    tipo="error",
+                    campo="rn",
+                    funcion="fn_rn",
+                    archivo="test.py",
+                    linea=10,
+                    mensaje="Test de RN-001 no encontrado",
+                    sugerencia="Crear tests/rn/test_rn_001.py",
+                )
+            ],
+        )
+        archivo = _mock_archivo(funciones=[func])
+        monkeypatch.setattr(
+            "docpact.checker.orchestrator.check_proyecto",
+            lambda path, config, diff_only=False: _mock_resultado(
+                errores=1, archivos=[archivo]
+            ),
+        )
+        assert main(["test", "."]) == 1
+
