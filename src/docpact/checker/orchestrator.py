@@ -290,8 +290,18 @@ def check_file(
         ResultadoArchivo con todas las funciones y sus hallazgos.
     """
     path = Path(archivo)
-    if config.debe_excluir(path):
-        return ResultadoArchivo(archivo=str(path))
+    proyecto_root = _find_project_root(str(path))
+    if proyecto_root is not None:
+        try:
+            rel_path = path.resolve().relative_to(proyecto_root.resolve())
+            if config.debe_excluir(rel_path):
+                return ResultadoArchivo(archivo=str(path))
+        except ValueError:
+            if config.debe_excluir(path):
+                return ResultadoArchivo(archivo=str(path))
+    else:
+        if config.debe_excluir(path):
+            return ResultadoArchivo(archivo=str(path))
 
     if path.suffix in (".ts", ".tsx", ".jsx"):
         return _check_file_ts(path, config)
