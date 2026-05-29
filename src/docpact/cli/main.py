@@ -77,6 +77,11 @@ def main(argv: list[str] | None = None) -> int:
         default=0,
         help="Score mínimo requerido. Falla si el score es menor (ej: --min-score 90)",
     )
+    check_parser.add_argument(
+        "--no-run-tests",
+        action="store_true",
+        help="Desactiva la ejecución de tests dinámicos de Reglas de Negocio con pytest",
+    )
 
     # ├─ mcp
     mcp_parser = subparsers.add_parser(
@@ -346,6 +351,8 @@ def _cmd_check(args: argparse.Namespace) -> int:
     if args.strict or args.fix:
         # --fix implica --strict
         config.strict = True
+    if args.no_run_tests:
+        config.run_tests = False
 
     resultado = check_proyecto(args.path, config, diff_only=args.diff)
 

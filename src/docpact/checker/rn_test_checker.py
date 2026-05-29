@@ -9,6 +9,7 @@ SRP: El CONTRATO documenta la RN, el test verifica, docpact conecta ambos.
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 from docpact.models.contrato import ErrorParser
@@ -80,7 +81,7 @@ def check_rn_tests_pasan(
         try:
             result = subprocess.run(
                 [
-                    "python3",
+                    sys.executable,
                     "-m",
                     "pytest",
                     str(test_file),

@@ -94,35 +94,38 @@ def tokenizar(docstring: str) -> list[Token]:
 
     # La primera línea con contenido define el nivel de los campos raíz
     primer_indent = lineas_restantes[0][3]
-    # Nivel 1: campos raíz (side_effects, input, output, rn, borde, dependencias)
     nivel_campos = primer_indent
-    # Nivel 2: sub-campos e items de lista
-    nivel_sub = primer_indent + 2
-    # Nivel 3: sub-sub (raro)
-    nivel_sub2 = primer_indent + 4
+
+    # Campos raíz válidos en docpact
+    CAMPOS_RAIZ = {"input", "output", "side_effects", "rn", "borde", "dependencias", "reglas"}
 
     for i, raw, stripped, indent in lineas_restantes:
         linea_num = i + 1
 
-        if indent == nivel_campos and stripped.endswith(":"):
-            # Campo compuesto (input:, output:, rn:, borde:, dependencias:)
-            nombre_campo = stripped[:-1].strip()
-            tokens.append(
-                Token(TipoToken.CAMPO_COMPUESTO, nombre_campo, linea_num, indent)
-            )
+        # Clasificación semántica de campos raíz (independiente de espacios exactos)
+        es_campo_raiz = False
+        if ":" in stripped:
+            posible_raiz = stripped.split(":", 1)[0].strip().lower()
+            if posible_raiz in CAMPOS_RAIZ:
+                es_campo_raiz = True
 
-        elif (
-            indent == nivel_campos and ":" in stripped and not stripped.startswith("-")
-        ):
-            # Campo simple (side_effects: valor)
-            tokens.append(Token(TipoToken.CAMPO_SIMPLE, stripped, linea_num, indent))
+        if es_campo_raiz:
+            if stripped.endswith(":"):
+                # Campo compuesto (ej. input:, rn:, dependencias:)
+                nombre_campo = stripped[:-1].strip()
+                tokens.append(
+                    Token(TipoToken.CAMPO_COMPUESTO, nombre_campo, linea_num, indent)
+                )
+            else:
+                # Campo simple (ej. side_effects: ninguno, rn: [RN-010])
+                tokens.append(Token(TipoToken.CAMPO_SIMPLE, stripped, linea_num, indent))
 
-        elif indent >= nivel_sub and stripped.startswith("-"):
+        elif indent > nivel_campos and stripped.startswith("-"):
             # Item de lista
             tokens.append(Token(TipoToken.ITEM_LISTA, stripped, linea_num, indent))
 
-        elif indent >= nivel_sub and not stripped.startswith("-") and ":" in stripped:
-            # Sub-campo (param: type)
+        elif indent > nivel_campos and not stripped.startswith("-") and ":" in stripped:
+            # Sub-campo (ej. param: type)
             tokens.append(Token(TipoToken.SUB_CAMPO, stripped, linea_num, indent))
 
         else:

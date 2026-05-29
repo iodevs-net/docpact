@@ -145,3 +145,41 @@ async function crearTicket(): Promise<void> {
     tmp.unlink()
     sidefx_hallazgos = [h for f in resultado.funciones for h in f.hallazgos
                         if h.campo == "side_effects"]
+
+
+def test_check_file_introspeccion_firmas():
+    """Verificar que docpact introspecte firmas y tipos AST automáticamente."""
+    from docpact.checker.orchestrator import check_file
+    from pathlib import Path as _P
+    import tempfile
+    
+    tmp = _P(tempfile.mkstemp(suffix=".py")[1])
+    tmp.write_text("""\
+def mi_funcion_procesar(cliente_id: int, activo: bool = True) -> dict[str, Any]:
+    \"\"\"Procesa un cliente.
+    
+    CONTRATO:
+    side_effects: ninguno
+    rn: [RN-001]
+    \"\"\"
+    return {"id": cliente_id}
+""")
+    
+    config = DocpactConfig()
+    resultado = check_file(str(tmp), config)
+    tmp.unlink()
+    
+    assert len(resultado.funciones) == 1
+    func = resultado.funciones[0]
+    assert func.tiene_contrato
+    assert func.contrato is not None
+    
+    # Verificar inputs introspectados
+    assert "cliente_id" in func.contrato.input
+    assert func.contrato.input["cliente_id"].tipo == "int"
+    assert "activo" in func.contrato.input
+    assert func.contrato.input["activo"].tipo == "bool"
+    
+    # Verificar output introspectado
+    assert func.contrato.output == "dict[str, Any]"
+

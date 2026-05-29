@@ -53,6 +53,7 @@ class DocpactConfig:
         rn_patrones: Optional[dict[str, dict[str, str]]] = None,
         modules: Optional[dict[str, dict]] = None,
         types_allowlist: Optional[set[str]] = None,
+        run_tests: bool = True,
     ):
         self.strict = strict
         self.min_score = min_score
@@ -63,6 +64,7 @@ class DocpactConfig:
         self.rn_patrones = rn_patrones or {}
         self.modules = modules or {}
         self.types_allowlist: set[str] = types_allowlist or set()
+        self.run_tests = run_tests
         self._patrones_compilados: Optional[dict[str, list[re.Pattern[str]]]] = None
 
     def debe_suprimir(self, mensaje: str) -> bool:
@@ -126,6 +128,7 @@ class DocpactConfig:
         strict = docpact_cfg.get("strict", False)
         min_score = docpact_cfg.get("min_score", 75)
         exclude = set(docpact_cfg.get("exclude", []))
+        run_tests = docpact_cfg.get("run_tests", True)
 
         patrones = dict(PATRONES_DEFECTO)
         se_cfg = docpact_cfg.get("side_effects", {})
@@ -173,6 +176,7 @@ class DocpactConfig:
             rn_patrones=rn_patrones,
             modules=modules,
             types_allowlist=types_allowlist if types_allowlist else None,
+            run_tests=run_tests,
         )
 
 
@@ -186,4 +190,5 @@ def _serializar_config(config: DocpactConfig) -> dict[str, Any]:
         "rn_prefix": config.rn_prefix,
         "modulos": list(config.modules.keys()),
         "types_allowlist": sorted(config.types_allowlist),
+        "run_tests": config.run_tests,
     }

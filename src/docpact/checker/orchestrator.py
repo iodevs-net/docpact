@@ -38,6 +38,7 @@ from docpact.models.contrato import (
     ReglaNegocio,
     Dependencia,
     SideEffect,
+    CampoInput,
 )
 from docpact.parser.extractor import extraer_docstrings
 from docpact.parser.lexer import tokenizar
@@ -586,6 +587,19 @@ def _procesar_funcion(
     tokens = tokenizar(doc)
     contrato, parse_errors = parsear(tokens)
 
+    # Introspectar firma si no se declararon inputs o output en el docstring (Zero-Friction)
+    if "CONTRATO:" in doc and (not contrato.input or not contrato.output):
+        inputs_intro, output_intro = _introspectar_firma(node)
+        contrato = Contrato(
+            input=contrato.input if contrato.input else inputs_intro,
+            output=contrato.output if contrato.output else output_intro,
+            output_descripcion=contrato.output_descripcion,
+            side_effects=contrato.side_effects,
+            rn=contrato.rn,
+            borde=contrato.borde,
+            dependencias=contrato.dependencias,
+        )
+
     hay_contrato = bool(
         contrato.side_effects or contrato.rn or contrato.input or contrato.output
     )
@@ -793,19 +807,20 @@ def _procesar_funcion(
                     )
                 )
             # Verificar que los tests existentes PASEN
-            rn_test_fallos = check_rn_tests_pasan(rn_ids, proyecto_root, nombre)
-            for e in rn_test_fallos:
-                hallazgos.append(
-                    Hallazgo(
-                        tipo="error",
-                        campo=e.campo,
-                        funcion=nombre,
-                        archivo=archivo,
-                        linea=node.lineno,
-                        mensaje=e.mensaje,
-                        sugerencia=e.sugerencia,
+            if config.run_tests:
+                rn_test_fallos = check_rn_tests_pasan(rn_ids, proyecto_root, nombre)
+                for e in rn_test_fallos:
+                    hallazgos.append(
+                        Hallazgo(
+                            tipo="error",
+                            campo=e.campo,
+                            funcion=nombre,
+                            archivo=archivo,
+                            linea=node.lineno,
+                            mensaje=e.mensaje,
+                            sugerencia=e.sugerencia,
+                        )
                     )
-                )
 
     hallazgos = _suprimir_hallazgos(hallazgos, config)
 
@@ -1061,6 +1076,37 @@ def _check_signature(
     se delega a mypy/pyright. Se mantiene el stub para no romper llamadas.
     """
     return
+
+
+def _introspectar_firma(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> tuple[dict[str, CampoInput], str | None]:
+    """Extrae argumentos y retorno usando el AST de la función."""
+    import ast
+    inputs: dict[str, CampoInput] = {}
+    output_type: str | None = None
+
+    # Mapear argumentos
+    todos_args = node.args.args + node.args.kwonlyargs
+    for arg in todos_args:
+        if arg.arg in ("self", "cls"):
+            continue
+        tipo = "Any"
+        if arg.annotation:
+            try:
+                tipo = ast.unparse(arg.annotation).strip()
+            except Exception:
+                tipo = "Any"
+        inputs[arg.arg] = CampoInput(nombre=arg.arg, tipo=tipo)
+
+    # Mapear retorno
+    if node.returns:
+        try:
+            output_type = ast.unparse(node.returns).strip()
+        except Exception:
+            output_type = "Any"
+
+    return inputs, output_type
 
 
 def _find_project_root(archivo: str) -> Optional[Path]:
