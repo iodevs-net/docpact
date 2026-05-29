@@ -45,6 +45,8 @@ from docpact.parser.lexer import tokenizar
 from docpact.parser.parser import parsear
 from docpact.parser.ts_parser import extraer_contratos_ts
 from docpact.checker.ts_sidefx import check_side_effects_ts
+from docpact.checker.contract_index import ContractIndex, ImportResolver
+from docpact.checker.transitive_effects import check_transitive_effects
 
 
 @dataclass
@@ -274,12 +276,14 @@ class ResultadoProyecto:
 def check_file(
     archivo: str | Path,
     config: DocpactConfig,
+    index: Optional[ContractIndex] = None,
 ) -> ResultadoArchivo:
     """Verifica un archivo Python, TypeScript o JSX.
 
     Args:
         archivo: Ruta al archivo.
         config: Configuración de docpact.
+        index: Índice global de contratos.
 
     Returns:
         ResultadoArchivo con todas las funciones y sus hallazgos.
@@ -310,6 +314,18 @@ def check_file(
 
     tiene_future_annotations = "from __future__ import annotations" in fuente
 
+    # Resolver imports si hay un índice global de contratos disponible
+    imports: dict[str, str] = {}
+    modulo_actual = path.stem
+    if index is not None:
+        try:
+            resolver = ImportResolver(path, index.project_root)
+            resolver.visit(tree)
+            imports = resolver.imports
+            modulo_actual = resolver.modulo_actual
+        except Exception:
+            pass
+
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.ClassDef):
             for item in ast.iter_child_nodes(node):
@@ -317,10 +333,19 @@ def check_file(
                     _procesar_funcion(
                         item, str(path), fuente, config, doc_map, resultado,
                         tiene_future_annotations=tiene_future_annotations,
+                        index=index,
+                        imports=imports,
+                        modulo_actual=modulo_actual,
+                        clase_actual=node.name,
                     )
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            _procesar_funcion(node, str(path), fuente, config, doc_map, resultado,
-                              tiene_future_annotations=tiene_future_annotations)
+            _procesar_funcion(
+                node, str(path), fuente, config, doc_map, resultado,
+                tiene_future_annotations=tiene_future_annotations,
+                index=index,
+                imports=imports,
+                modulo_actual=modulo_actual,
+            )
 
     return resultado
 
@@ -543,6 +568,10 @@ def _procesar_funcion(
     doc_map: dict[str, tuple[int, str, str]],
     resultado: ResultadoArchivo,
     tiene_future_annotations: bool = False,
+    index: Optional[ContractIndex] = None,
+    imports: Optional[dict[str, str]] = None,
+    modulo_actual: str = "",
+    clase_actual: Optional[str] = None,
 ) -> None:
     """Procesa una función: extrae CONTRATO y ejecuta checkers."""
     nombre = node.name
@@ -670,6 +699,31 @@ def _procesar_funcion(
                 sugerencia=se.sugerencia,
             )
         )
+
+    # Side effects transitivos
+    if index is not None and imports is not None:
+        trans_errores = check_transitive_effects(
+            node,
+            contrato,
+            imports,
+            index,
+            nombre,
+            archivo,
+            modulo_actual,
+            clase_actual,
+        )
+        for te in trans_errores:
+            hallazgos.append(
+                Hallazgo(
+                    tipo="error",  # La falsificación de contratos es un error crítico
+                    campo=te.campo,
+                    funcion=nombre,
+                    archivo=archivo,
+                    linea=te.linea or node.lineno,
+                    mensaje=te.mensaje,
+                    sugerencia=te.sugerencia,
+                )
+            )
 
     # RN check — usa la fuente original para extraer comentarios
     rn_errores = _check_rn_con_fuente(node, contrato, fuente, config.rn_prefix, nombre)
@@ -951,11 +1005,24 @@ def check_proyecto(
     if not archivos:
         return ResultadoProyecto(config=config)
 
+    # Construir índice global de contratos para el análisis transitivo
+    index = ContractIndex()
+    proyecto_root = _find_project_root(ruta)
+    try:
+        # Buscamos todos los archivos .py del proyecto para el índice (incluso los no modificados)
+        todos_py = archivos
+        if diff_only and ruta.is_dir():
+            todos_py = sorted(list(ruta.rglob("*.py")))
+            todos_py = [a for a in todos_py if not config.debe_excluir(a)]
+        index.build(todos_py, config, project_root=proyecto_root)
+    except Exception:
+        pass
+
     import concurrent.futures
 
     resultados_archivos: list[ResultadoArchivo] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        futuros = {pool.submit(check_file, a, config): a for a in archivos}
+        futuros = {pool.submit(check_file, a, config, index): a for a in archivos}
         for futuro in concurrent.futures.as_completed(futuros):
             try:
                 ra = futuro.result()
