@@ -145,3 +145,59 @@ def post():
     assert len(errores) == 1
     assert "declara side_effects: ninguno" in errores[0].mensaje
     assert "crear_ticket" in errores[0].mensaje
+
+
+def test_transitive_semantic_mapping():
+    # Caso donde el origen tiene descripción narrativa que satisface semánticamente el efecto técnico
+    doc_origen = """
+    CONTRATO:
+    side_effects: registra gastos en bd, envía notificación
+    """
+    tokens = tokenizar(doc_origen)
+    contrato_origen, _ = parsear(tokens)
+
+    fuente_origen = """
+def post():
+    crear_ticket()
+"""
+    tree = ast.parse(fuente_origen)
+    func_node = tree.body[0]
+
+    from dataclasses import dataclass
+    @dataclass
+    class MockContratoIdx:
+        modulo: str
+        clase: str | None
+        funcion: str
+        side_effects: list[str]
+        archivo: str
+        linea: int
+
+    class MockIndex:
+        def lookup(self, name, imports, modulo_actual, clase_contexto=None):
+            if name == "crear_ticket":
+                return MockContratoIdx(
+                    modulo="soporte.services",
+                    clase=None,
+                    funcion="crear_ticket",
+                    side_effects=["db_write", "notification"],
+                    archivo="services.py",
+                    linea=10,
+                )
+            return None
+
+    index = MockIndex()
+    imports = {"crear_ticket": "soporte.services.crear_ticket"}
+
+    errores = check_transitive_effects(
+        func_node,
+        contrato_origen,
+        imports,
+        index,
+        "post",
+        "views.py",
+        "soporte.views",
+    )
+
+    # Debería ser 0 porque "registra gastos en bd" cubre "db_write", y "envía notificación" cubre "notification"
+    assert len(errores) == 0

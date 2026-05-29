@@ -82,9 +82,14 @@ class DocpactConfig:
         if self._patrones_compilados is None:
             self._patrones_compilados = {}
             for categoria, patrones in self.patrones_side_effects.items():
-                self._patrones_compilados[categoria] = [
-                    re.compile(re.escape(p)) for p in patrones
-                ]
+                compiled = []
+                for p in patrones:
+                    if p.startswith("."):
+                        # Evitar falsos positivos como updated_at coincidiendo con .update
+                        compiled.append(re.compile(r'\.' + re.escape(p[1:]) + r'\b'))
+                    else:
+                        compiled.append(re.compile(re.escape(p)))
+                self._patrones_compilados[categoria] = compiled
         return self._patrones_compilados
 
     def debe_excluir(self, path: Path) -> bool:

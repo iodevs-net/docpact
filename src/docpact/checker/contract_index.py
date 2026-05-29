@@ -93,12 +93,34 @@ class ImportResolver(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+# Nombres de métodos genéricos de frameworks (Django ORM, HTTP views, Python builtins)
+# que son extremadamente comunes y causan colisiones de nombres cortos.
+# Estos NUNCA se registran como clave corta standalone.
+_NOMBRES_GENERICOS_FRAMEWORK = frozenset({
+    # Django ORM / Model
+    "save", "delete", "create", "update", "get", "filter", "exclude",
+    "get_or_create", "update_or_create", "bulk_create", "bulk_update",
+    "clean", "full_clean", "validate",
+    # Django views / HTTP verbs
+    "get", "post", "put", "patch", "delete", "head", "options",
+    "dispatch", "setup",
+    # Django management commands
+    "handle", "add_arguments",
+    # Python builtins / dunder
+    "__init__", "__str__", "__repr__", "__call__",
+})
+
+
 class ContractIndex:
     """Índice global de todos los contratos definidos en el proyecto."""
 
+    # Valor centinela para indicar que un nombre corto es ambiguo
+    # (existe en múltiples módulos con contratos diferentes)
+    _AMBIGUOUS = object()
+
     def __init__(self):
         # Mapa: "modulo.clase.funcion" o "modulo.funcion" -> ContratoIndexado
-        self.indice: dict[str, ContratoIndexado] = {}
+        self.indice: dict[str, ContratoIndexado | object] = {}
         self.project_root: Optional[Path] = None
 
     def build(self, archivos: list[Path], config: DocpactConfig, project_root: Optional[Path] = None) -> None:
@@ -170,12 +192,26 @@ class ContractIndex:
                     linea=node.lineno,
                 )
 
+                # Clave calificada completa: siempre se registra (no hay colisión posible)
                 self.index.indice[clave] = contrato_idx
 
-                # También registrar por alias locales/cortos para mayor resiliencia
+                # Alias "Clase.metodo": registrar solo si no hay colisión
                 if self.clase_actual:
-                    self.index.indice[f"{self.clase_actual}.{node.name}"] = contrato_idx
-                self.index.indice[node.name] = contrato_idx
+                    clave_clase = f"{self.clase_actual}.{node.name}"
+                    existente = self.index.indice.get(clave_clase)
+                    if existente is None:
+                        self.index.indice[clave_clase] = contrato_idx
+                    elif existente is not ContractIndex._AMBIGUOUS and isinstance(existente, ContratoIndexado) and existente.modulo != modulo:
+                        self.index.indice[clave_clase] = ContractIndex._AMBIGUOUS
+
+                # Alias corto "funcion": NO registrar si es nombre genérico del framework
+                if node.name not in _NOMBRES_GENERICOS_FRAMEWORK:
+                    existente = self.index.indice.get(node.name)
+                    if existente is None:
+                        self.index.indice[node.name] = contrato_idx
+                    elif existente is not ContractIndex._AMBIGUOUS and isinstance(existente, ContratoIndexado) and existente.modulo != modulo:
+                        # Colisión: mismo nombre corto, módulos diferentes -> ambiguo
+                        self.index.indice[node.name] = ContractIndex._AMBIGUOUS
 
         indexer = ClassAndFuncIndexer(self, str(filepath))
         indexer.visit(tree)
@@ -188,9 +224,17 @@ class ContractIndex:
         clase_contexto: Optional[str] = None
     ) -> Optional[ContratoIndexado]:
         """Busca un contrato en el índice resolviendo nombres calificados."""
-        # 1. Búsqueda exacta directa (ej: si ya viene calificado por casualidad o es global)
-        if nombre_llamada in self.indice:
-            return self.indice[nombre_llamada]
+        def _get_valid(key: str) -> Optional[ContratoIndexado]:
+            """Obtiene una entrada del índice, retornando None si es ambigua."""
+            entry = self.indice.get(key)
+            if entry is ContractIndex._AMBIGUOUS or not isinstance(entry, ContratoIndexado):
+                return None
+            return entry
+
+        # 1. Búsqueda exacta directa (ej: clave calificada completa)
+        resultado = _get_valid(nombre_llamada)
+        if resultado:
+            return resultado
 
         partes = nombre_llamada.split(".")
         base = partes[0]
@@ -200,27 +244,32 @@ class ContractIndex:
             modulo_resuelto = imports[base]
             # Si el import apunta al símbolo final (ej: from x import func -> "modulo.completo.func")
             if len(partes) == 1:
-                if modulo_resuelto in self.indice:
-                    return self.indice[modulo_resuelto]
+                resultado = _get_valid(modulo_resuelto)
+                if resultado:
+                    return resultado
             else:
                 # Si el import apunta a la clase/modulo (ej: from x import TicketService -> "modulo.completo.TicketService")
                 resto = ".".join(partes[1:])
                 clave = f"{modulo_resuelto}.{resto}"
-                if clave in self.indice:
-                    return self.indice[clave]
+                resultado = _get_valid(clave)
+                if resultado:
+                    return resultado
 
         # 3. Intentar resolver en el mismo módulo actual (llamadas locales)
         if clase_contexto and len(partes) == 1:
             clave_local = f"{modulo_actual}.{clase_contexto}.{nombre_llamada}"
-            if clave_local in self.indice:
-                return self.indice[clave_local]
+            resultado = _get_valid(clave_local)
+            if resultado:
+                return resultado
         elif len(partes) == 1:
             clave_local = f"{modulo_actual}.{nombre_llamada}"
-            if clave_local in self.indice:
-                return self.indice[clave_local]
+            resultado = _get_valid(clave_local)
+            if resultado:
+                return resultado
 
-        # 4. Fallback: búsqueda por coincidencia de sufijo ("Clase.metodo" o "metodo")
-        if nombre_llamada in self.indice:
-            return self.indice[nombre_llamada]
+        # 4. Fallback: búsqueda por nombre corto (solo si no es ambiguo)
+        resultado = _get_valid(nombre_llamada)
+        if resultado:
+            return resultado
 
         return None

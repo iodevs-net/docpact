@@ -15,6 +15,44 @@ from docpact.checker.side_effects import _extraer_llamadas
 from docpact.models.contrato import Contrato, ErrorParser
 
 
+def _satisface_efecto(efectos_declarados: set[str], efecto_requerido: str) -> bool:
+    """Verifica de forma semántica si el efecto requerido está cubierto por las descripciones."""
+    # Si la categoría técnica exacta está declarada, es un match directo
+    if efecto_requerido in efectos_declarados:
+        return True
+
+    # Mapeo semántico en base a palabras clave (soporta español)
+    mapeo_claves = {
+        "db_write": [
+            "db_write", "bd", "base de datos", "crea", "guarda", "actualiza",
+            "registra", "elimina", "anula", "insert", "update", "delete",
+            "save", "persiste", "escribe", "modifica", "transaccion", "atomic"
+        ],
+        "email": [
+            "email", "correo", "notifica", "mensaje", "mail", "send_mail", "destinatario"
+        ],
+        "audit": [
+            "audit", "bitacora", "audita", "log", "historial", "evento"
+        ],
+        "external": [
+            "external", "externo", "api", "http", "request", "httpx", "urllib", "servicio"
+        ],
+        "notification": [
+            "notification", "notifica", "mensaje", "sms", "push", "alerta"
+        ]
+    }
+
+    claves = mapeo_claves.get(efecto_requerido, [efecto_requerido])
+
+    # Revisar si alguna palabra clave está contenida en alguna declaración descriptiva
+    for dec in efectos_declarados:
+        dec_lower = dec.lower()
+        if any(c in dec_lower for c in claves):
+            return True
+
+    return False
+
+
 def check_transitive_effects(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     contrato: Contrato,
@@ -69,16 +107,16 @@ def check_transitive_effects(
                 )
             )
     else:
-        # Si la función origen declara efectos, verificar que los de sus callees estén incluidos
+        # Si la función origen declara efectos, verificar que los de sus callees estén cubiertos semánticamente
         for llamada, efectos in llamadas_con_efectos.items():
             for e in efectos:
-                if e not in efectos_declarados:
+                if not _satisface_efecto(efectos_declarados, e):
                     errores.append(
                         ErrorParser(
                             "side_effects",
                             f"'{nombre_funcion}' declara side_effects: {', '.join(efectos_declarados)}, "
-                            f"pero llama a '{llamada}' que también produce: '{e}'",
-                            sugerencia=f"Agrega '{e}' al CONTRATO de '{nombre_funcion}'",
+                            f"pero llama a '{llamada}' que requiere la cobertura del efecto técnico: '{e}'",
+                            sugerencia=f"Agrega '{e}' o una descripción en español que lo contenga (ej: 'guarda en bd' o 'envía email') al CONTRATO de '{nombre_funcion}'",
                         )
                     )
 
