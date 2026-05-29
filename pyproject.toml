@@ -32,6 +32,9 @@ Documentation = "https://docpact.dev"
 [project.scripts]
 docpact = "docpact.cli.main:main"
 
+[project.entry-points.pytest11]
+docpact = "docpact.runtime.pytest_plugin"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/docpact"]
 

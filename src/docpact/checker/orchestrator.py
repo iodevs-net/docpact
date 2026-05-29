@@ -960,6 +960,40 @@ def _get_changed_files(ruta_base: Path) -> list[Path]:
     return []
 
 
+def _escanear_eficiente(ruta: Path, config: DocpactConfig, extensiones: tuple[str, ...]) -> list[Path]:
+    import os
+    archivos = []
+    
+    ruta_res = ruta.resolve()
+    # Comprobar la carpeta raíz de forma relativa
+    if config.debe_excluir(Path(ruta_res.name)):
+        return archivos
+
+    ruta_str = str(ruta_res)
+    for root, dirs, files in os.walk(ruta_str):
+        root_path = Path(root).resolve()
+        try:
+            rel_root = root_path.relative_to(ruta_res)
+        except ValueError:
+            rel_root = Path("")
+
+        # Modificar dirs in-place usando rutas relativas
+        dirs_to_keep = []
+        for d in dirs:
+            rel_dir_path = rel_root / d
+            if not config.debe_excluir(rel_dir_path):
+                dirs_to_keep.append(d)
+        dirs[:] = dirs_to_keep
+
+        for f in files:
+            file_path = root_path / f
+            rel_file_path = rel_root / f
+            if file_path.suffix in extensiones:
+                if not config.debe_excluir(rel_file_path):
+                    archivos.append(file_path)
+    return archivos
+
+
 def check_proyecto(
     path: str | Path,
     config: Optional[DocpactConfig] = None,
@@ -982,16 +1016,9 @@ def check_proyecto(
     if ruta.is_file():
         archivos = [ruta]
     elif ruta.is_dir():
-        archivos = sorted(
-            list(ruta.rglob("*.py"))
-            + list(ruta.rglob("*.ts"))
-            + list(ruta.rglob("*.tsx"))
-            + list(ruta.rglob("*.jsx"))
-        )
+        archivos = sorted(_escanear_eficiente(ruta, config, (".py", ".ts", ".tsx", ".jsx")))
     else:
         archivos = []
-
-    archivos = [a for a in archivos if not config.debe_excluir(a)]
 
     if not archivos:
         return ResultadoProyecto(config=config)
@@ -1014,8 +1041,7 @@ def check_proyecto(
         # Buscamos todos los archivos .py del proyecto para el índice (incluso los no modificados)
         todos_py = archivos
         if diff_only and ruta.is_dir():
-            todos_py = sorted(list(ruta.rglob("*.py")))
-            todos_py = [a for a in todos_py if not config.debe_excluir(a)]
+            todos_py = sorted(_escanear_eficiente(ruta, config, (".py",)))
         index.build(todos_py, config, project_root=proyecto_root)
     except Exception:
         pass
