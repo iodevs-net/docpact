@@ -160,6 +160,26 @@ def sumar_sesiones(tickets: list[Ticket]) -> HorasCalculadas:
 4. **RN checker TypeScript:** Busca `RN-XXX` en código fuente. Requiere
    comentario explícito. No verifica implementación real.
 
+## Verificación en Tiempo de Ejecución (Sentinelas de Runtime)
+
+A partir de la versión 0.4.2, `docpact` incluye un plugin de Pytest que ejecuta verificación dinámica para evitar la **falsificación de contratos**.
+
+Si una función promete `side_effects: ninguno` pero durante la suite de pruebas ejecuta operaciones prohibidas, el test fallará automáticamente con una violación de contrato (`ContractViolationError`).
+
+### Configuración en `docpact.toml`
+
+```toml
+[docpact.runtime]
+modo = "strict"  # strict (falla el test) | warning (avisa en consola) | disabled (desactivado)
+interceptar_servicios = true
+interceptar_vistas = true
+```
+
+### Sentinelas Interceptados
+1. **Base de Datos (`db_write`):** Intercepta consultas de escritura SQL (`INSERT`, `UPDATE`, `DELETE`, etc.) en caliente vía Django `connection.execute_wrapper`.
+2. **Sistema de Archivos (`escribe_archivo`):** Parchea `builtins.open` para detectar aperturas en modo de escritura (`'w'`, `'a'`, `'x'`).
+3. **Correo Electrónico (`email`):** Intercepta el outbox de pruebas de Django y `smtplib.SMTP.sendmail`.
+
 ## Integración CI/CD
 
 ```yaml
