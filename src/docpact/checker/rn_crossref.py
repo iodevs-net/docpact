@@ -22,7 +22,8 @@ class RNCrossError(NamedTuple):
 
 
 # Patron para detectar llamadas a funciones: nombre_funcion(
-_CALL_RE = re.compile(r"(?<!def )(?<!\.)([a-z_][a-zA-Z0-9_]+)\s*\(")
+# Agregamos \b para evitar coincidencias parciales con nombres de métodos de objeto (ej: self.get_client_ip)
+_CALL_RE = re.compile(r"(?<!def )(?<!\.)\b([a-z_][a-zA-Z0-9_]+)\s*\(")
 
 
 def _extraer_llamadas(codigo: str) -> set[str]:
@@ -66,7 +67,7 @@ def verificar_cross_reference(
     archivo: str,
     codigo_funcion: str,
     rn_ids: list[str],
-    todas_las_funciones: dict[str, dict[str, str]],
+    todas_las_funciones: dict[str, list[dict[str, str]]],
 ) -> list[RNCrossError]:
     """Verifica que las funciones llamadas tambien tengan las RNs."""
     errores: list[RNCrossError] = []
@@ -74,11 +75,22 @@ def verificar_cross_reference(
 
     for rn_id in rn_ids:
         for llamada in llamadas:
-            info = todas_las_funciones.get(llamada)
-            if not info:
+            defs = todas_las_funciones.get(llamada)
+            if not defs:
                 continue
+            
+            # Intentar resolver al mismo archivo primero para evitar colisiones
+            definicion = None
+            for d in defs:
+                if d.get("archivo") == archivo:
+                    definicion = d
+                    break
+            
+            if not definicion:
+                definicion = defs[0]
+
             # Verificar que la funcion destino tenga RN en su codigo
-            codigo_destino = info.get("codigo", "")
+            codigo_destino = definicion.get("codigo", "")
             if not _tiene_rn_en_codigo(codigo_destino, rn_id):
                 errores.append(
                     RNCrossError(
@@ -95,9 +107,9 @@ def verificar_cross_reference(
 def build_funcion_map(
     resultados_funciones: list,
     fuentes: dict[str, str],
-) -> dict[str, dict[str, str]]:
-    """Construye mapa de todas las funciones del proyecto con su codigo."""
-    mapa: dict[str, dict[str, str]] = {}
+) -> dict[str, list[dict[str, str]]]:
+    """Construye mapa de todas las funciones del proyecto con sus definiciones."""
+    mapa: dict[str, list[dict[str, str]]] = {}
     for rf in resultados_funciones:
         nombre = getattr(rf, "nombre", "")
         archivo = getattr(rf, "archivo", "")
@@ -106,5 +118,8 @@ def build_funcion_map(
         fuente = fuentes.get(archivo, "")
         if not fuente:
             continue
-        mapa[nombre] = {"codigo": fuente, "archivo": archivo}
+        if nombre not in mapa:
+            mapa[nombre] = []
+        mapa[nombre].append({"codigo": fuente, "archivo": archivo})
     return mapa
+

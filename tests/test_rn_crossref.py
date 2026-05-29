@@ -108,7 +108,7 @@ class TestVerificarCrossReference:
             codigo_funcion="destino()",
             rn_ids=["RN-001"],
             todas_las_funciones={
-                "destino": {"codigo": "# RN-001", "archivo": "test.py"},
+                "destino": [{"codigo": "# RN-001", "archivo": "test.py"}],
             },
         )
         assert errores == []
@@ -119,7 +119,7 @@ class TestVerificarCrossReference:
             codigo_funcion="destino()",
             rn_ids=["RN-001"],
             todas_las_funciones={
-                "destino": {"codigo": "x = 1", "archivo": "test.py"},
+                "destino": [{"codigo": "x = 1", "archivo": "test.py"}],
             },
         )
         assert len(errores) == 1
@@ -133,7 +133,7 @@ class TestVerificarCrossReference:
             codigo_funcion="destino()",
             rn_ids=["RN-001", "RN-002"],
             todas_las_funciones={
-                "destino": {"codigo": "# RN-001", "archivo": "test.py"},
+                "destino": [{"codigo": "# RN-001", "archivo": "test.py"}],
             },
         )
         assert len(errores) == 1
@@ -172,7 +172,7 @@ class TestBuildFuncionMap:
         mapa = build_funcion_map(resultados, fuentes)
         assert "foo" in mapa
         assert "bar" in mapa
-        assert mapa["foo"]["codigo"] == "# RN-001"
+        assert mapa["foo"][0]["codigo"] == "# RN-001"
 
     def test_ignora_sin_nombre(self):
         from collections import namedtuple

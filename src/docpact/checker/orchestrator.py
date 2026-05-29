@@ -97,6 +97,7 @@ class ResultadoFuncion:
     tiene_contrato: bool
     contrato: Optional[Contrato] = None
     hallazgos: list[Hallazgo] = field(default_factory=list)
+    codigo_funcion: str = ""
 
     @property
     def errores(self) -> list[Hallazgo]:
@@ -886,6 +887,7 @@ def _procesar_funcion(
             tiene_contrato=True,
             contrato=contrato,
             hallazgos=hallazgos,
+            codigo_funcion=codigo_funcion,
         )
     )
 
@@ -1091,7 +1093,7 @@ def _check_cross_reference_proyecto(
 
     # Construir mapa de funciones
     fuentes: dict[str, str] = {}
-    mapa_funciones: dict[str, dict[str, str]] = {}
+    todas_las_funciones_list = []
     for ra in resultados_archivos:
         archivo = getattr(ra, "archivo", "")
         if archivo:
@@ -1099,13 +1101,9 @@ def _check_cross_reference_proyecto(
                 fuentes[archivo] = Path(archivo).read_text(encoding="utf-8")
             except Exception:
                 pass
-        for rf in getattr(ra, "funciones", []):
-            nombre = getattr(rf, "nombre", "")
-            if nombre and archivo:
-                mapa_funciones[nombre] = {
-                    "codigo": fuentes.get(archivo, ""),
-                    "archivo": archivo,
-                }
+        todas_las_funciones_list.extend(getattr(ra, "funciones", []))
+
+    mapa_funciones = build_funcion_map(todas_las_funciones_list, fuentes)
 
     errores: list = []
     for ra in resultados_archivos:
@@ -1116,7 +1114,7 @@ def _check_cross_reference_proyecto(
             rn_ids = [r.id for r in contrato.rn if r.id]
             if not rn_ids:
                 continue
-            codigo = fuentes.get(getattr(ra, "archivo", ""), "")
+            codigo = getattr(rf, "codigo_funcion", "") or fuentes.get(getattr(ra, "archivo", ""), "")
             if codigo:
                 errs = verificar_cross_reference(
                     getattr(ra, "archivo", ""),
