@@ -84,6 +84,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Desactiva la ejecución de tests dinámicos de Reglas de Negocio con pytest",
     )
+    check_parser.add_argument(
+        "--no-runtime",
+        action="store_true",
+        help="Desactiva el wrapper runtime de side_effects en pytest (evita ruido en tracebacks)",
+    )
 
     # ├─ lint (análisis estático puro — sin pytest)
     lint_parser = subparsers.add_parser(
@@ -395,6 +400,10 @@ def _cmd_check(args: argparse.Namespace) -> int:
         config.strict = True
     if args.no_run_tests:
         config.run_tests = False
+    if getattr(args, "no_runtime", False):
+        config.run_runtime = False
+        import os as _os
+        _os.environ["DOCPACT_NO_RUNTIME"] = "1"
 
     resultado = check_proyecto(args.path, config, diff_only=args.diff)
 

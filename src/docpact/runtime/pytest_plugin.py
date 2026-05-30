@@ -18,6 +18,10 @@ def pytest_configure(config):
     Construye el mapa de contratos estáticamente sin realizar imports.
     """
     global _contratos_map, _modo
+
+    if os.environ.get("DOCPACT_NO_RUNTIME") == "1":
+        return
+
     root_dir = Path(config.rootdir)
     toml_path = root_dir / "docpact.toml"
     
