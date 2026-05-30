@@ -1201,6 +1201,7 @@ def _check_signature(
 
     No verifica tipos (delegado a mypy/pyright), solo nombres de parámetros.
     Omite self/cls automáticamente.
+    Detecta parámetros virtuales (extraídos de kwargs.pop/get en el cuerpo).
     """
     if not contrato.input:
         return
@@ -1213,10 +1214,26 @@ def _check_signature(
     for arg in node.args.kwonlyargs:
         if arg.arg not in ("self", "cls"):
             params_reales.add(arg.arg)
-    if node.args.vararg:
-        params_reales.add(node.args.vararg.arg)
-    if node.args.kwarg:
-        params_reales.add(node.args.kwarg.arg)
+    kwarg_name = node.args.kwarg.arg if node.args.kwarg else None
+    vararg_name = node.args.vararg.arg if node.args.vararg else None
+    if vararg_name:
+        params_reales.add(vararg_name)
+    if kwarg_name:
+        params_reales.add(kwarg_name)
+
+    # Virtual params: nombres extraídos de kwargs.pop("x") / kwargs.get("x") en el cuerpo
+    if kwarg_name:
+        for subnode in ast.walk(node):
+            if isinstance(subnode, ast.Call):
+                func = subnode.func
+                if (isinstance(func, ast.Attribute)
+                        and func.attr in ("pop", "get")
+                        and isinstance(func.value, ast.Name)
+                        and func.value.id == kwarg_name
+                        and subnode.args
+                        and isinstance(subnode.args[0], ast.Constant)
+                        and isinstance(subnode.args[0].value, str)):
+                    params_reales.add(subnode.args[0].value)
 
     params_contrato = set(contrato.input.keys())
 

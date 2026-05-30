@@ -175,6 +175,18 @@ def main(argv: list[str] | None = None) -> int:
         "--json", action="store_true", help="Salida en formato JSON"
     )
 
+    # ├─ fix
+    fix_parser = subparsers.add_parser(
+        "fix", help="Auto-corrige warnings de firma en CONTRATOS"
+    )
+    fix_parser.add_argument(
+        "path", type=str, help="Archivo o directorio a corregir"
+    )
+    fix_parser.add_argument(
+        "--diff", action="store_true",
+        help="Solo afectar archivos modificados vs HEAD (git diff)",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "extract":
@@ -193,6 +205,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_mcp(args)
     elif args.command == "doctor":
         return _cmd_doctor(args)
+    elif args.command == "fix":
+        return _cmd_fix(args)
     else:
         parser.print_help()
         return 0
@@ -669,6 +683,44 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         print(f"\n{'✅' if resultado.ok else '❌'} Doctor: {resultado.resumen()}")
 
     return 0 if resultado.ok else 1
+
+
+def _cmd_fix(args: argparse.Namespace) -> int:
+    """Comando fix: auto-corrige warnings de firma en CONTRATOS."""
+    from docpact.cli.fix import fix_file
+    from pathlib import Path
+
+    path = Path(args.path)
+    if path.is_file():
+        archivos = [path]
+    elif path.is_dir():
+        import os
+        archivos = []
+        for root, _dirs, files in os.walk(str(path)):
+            for f in files:
+                if f.endswith(".py"):
+                    archivos.append(Path(root) / f)
+    else:
+        print(f"❌ No encontrado: {path}", file=sys.stderr)
+        return 2
+
+    total = 0
+    for archivo in archivos:
+        if _es_excluido(archivo):
+            continue
+        try:
+            r = fix_file(archivo)
+            if r:
+                print(f"  ✅ {archivo.relative_to(path) if path.is_dir() else archivo.name}")
+                total += r
+        except Exception as e:
+            print(f"  ⚠️ {archivo}: {e}", file=sys.stderr)
+
+    if total:
+        print(f"\n🔧 {total} archivos corregidos")
+    else:
+        print("✅ No se encontraron correcciones necesarias")
+    return 0
 
 
 def _cmd_mcp(args: argparse.Namespace) -> int:
