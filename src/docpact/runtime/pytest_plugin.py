@@ -11,7 +11,7 @@ from docpact.runtime.sentinels import sentinela_db, sentinela_disco, sentinela_e
 _contratos_map = {}
 _wrapped_functions = set()
 _modo = "strict"
-_runtime_enabled = False
+_runtime_enabled = True  # Default ON (cambio 2026-06-02: antes era False)
 
 
 def _runtime_habilitado(root_dir: Path) -> tuple[bool, str]:
@@ -20,9 +20,8 @@ def _runtime_habilitado(root_dir: Path) -> tuple[bool, str]:
     Reglas (en orden de precedencia):
       1. DOCPACT_NO_RUNTIME=1 -> desactivado (compat historica)
       2. DOCPACT_RUNTIME=1   -> activado (opt-in explicito via env)
-      3. [docpact.runtime] enabled = true en docpact.toml -> activado
-      4. [docpact.runtime] enabled = false en docpact.toml -> desactivado
-      5. Default: DESACTIVADO (antes era siempre activado)
+      3. [docpact.runtime] enabled = false en docpact.toml -> desactivado
+      4. Default: ACTIVADO (el sistema empuja a hacer lo correcto)
 
     Returns:
         (habilitado, modo)
@@ -43,13 +42,14 @@ def _runtime_habilitado(root_dir: Path) -> tuple[bool, str]:
                 data = tomllib.load(f)
             docpact_cfg = data.get("docpact", {})
             runtime_cfg = docpact_cfg.get("runtime", {}) or data.get("runtime", {})
-            enabled = runtime_cfg.get("enabled", False)
+            # Default True: el sistema empuja a hacer lo correcto siempre
+            enabled = runtime_cfg.get("enabled", True)
             modo = runtime_cfg.get("modo", "warning")
             return bool(enabled), modo
         except Exception:
             return False, "off"
 
-    return False, "off"
+    return True, "warning"  # Default ON cuando no hay toml
 
 
 def _leer_modo_toml(root_dir: Path) -> str:
@@ -71,11 +71,10 @@ def pytest_configure(config):
 
     Construye el mapa de contratos estáticamente sin realizar imports.
 
-    CAMBIO 2026-06-02: el runtime ahora es opt-in. Antes se activaba siempre,
-    lo que generaba falsos positivos (ej. bloqueaba tests legitimos con
-    db_write declarado correctamente). Para activar:
-      - export DOCPACT_RUNTIME=1
-      - o [docpact.runtime] enabled = true en docpact.toml
+    Default: ACTIVADO. El sistema empuja a hacer lo correcto siempre.
+    Para desactivar temporalmente:
+      - export DOCPACT_NO_RUNTIME=1
+      - o [docpact.runtime] enabled = false en docpact.toml
     """
     global _contratos_map, _modo, _runtime_enabled
 
