@@ -11,29 +11,85 @@ from docpact.runtime.sentinels import sentinela_db, sentinela_disco, sentinela_e
 _contratos_map = {}
 _wrapped_functions = set()
 _modo = "strict"
+_runtime_enabled = False
 
-def pytest_configure(config):
-    """Escanea el proyecto usando AST en la configuración inicial de pytest.
 
-    Construye el mapa de contratos estáticamente sin realizar imports.
+def _runtime_habilitado(root_dir: Path) -> tuple[bool, str]:
+    """Determina si el runtime debe activarse.
+
+    Reglas (en orden de precedencia):
+      1. DOCPACT_NO_RUNTIME=1 -> desactivado (compat historica)
+      2. DOCPACT_RUNTIME=1   -> activado (opt-in explicito via env)
+      3. [docpact.runtime] enabled = true en docpact.toml -> activado
+      4. [docpact.runtime] enabled = false en docpact.toml -> desactivado
+      5. Default: DESACTIVADO (antes era siempre activado)
+
+    Returns:
+        (habilitado, modo)
     """
-    global _contratos_map, _modo
-    root_dir = Path(config.rootdir)
+    if os.environ.get("DOCPACT_NO_RUNTIME") == "1":
+        return False, "off"
+
+    if os.environ.get("DOCPACT_RUNTIME") == "1":
+        # Tomar modo de toml si existe
+        modo = _leer_modo_toml(root_dir)
+        return True, modo
+
+    # Sin env var: leer toml
     toml_path = root_dir / "docpact.toml"
-    
-    _modo = "strict"
     if toml_path.exists():
         try:
             with open(toml_path, "rb") as f:
                 data = tomllib.load(f)
             docpact_cfg = data.get("docpact", {})
             runtime_cfg = docpact_cfg.get("runtime", {}) or data.get("runtime", {})
-            _modo = runtime_cfg.get("modo", "strict")
+            enabled = runtime_cfg.get("enabled", False)
+            modo = runtime_cfg.get("modo", "warning")
+            return bool(enabled), modo
         except Exception:
-            pass
+            return False, "off"
 
-    if _modo == "disabled":
+    return False, "off"
+
+
+def _leer_modo_toml(root_dir: Path) -> str:
+    toml_path = root_dir / "docpact.toml"
+    if not toml_path.exists():
+        return "warning"
+    try:
+        with open(toml_path, "rb") as f:
+            data = tomllib.load(f)
+        docpact_cfg = data.get("docpact", {})
+        runtime_cfg = docpact_cfg.get("runtime", {}) or data.get("runtime", {})
+        return runtime_cfg.get("modo", "warning")
+    except Exception:
+        return "warning"
+
+
+def pytest_configure(config):
+    """Escanea el proyecto usando AST en la configuración inicial de pytest.
+
+    Construye el mapa de contratos estáticamente sin realizar imports.
+
+    CAMBIO 2026-06-02: el runtime ahora es opt-in. Antes se activaba siempre,
+    lo que generaba falsos positivos (ej. bloqueaba tests legitimos con
+    db_write declarado correctamente). Para activar:
+      - export DOCPACT_RUNTIME=1
+      - o [docpact.runtime] enabled = true en docpact.toml
+    """
+    global _contratos_map, _modo, _runtime_enabled
+
+    root_dir = Path(config.rootdir)
+    enabled, modo = _runtime_habilitado(root_dir)
+
+    if not enabled:
+        # Default-off. Para activar, ver docstring de _runtime_habilitado.
+        _modo = "off"
+        _runtime_enabled = False
         return
+
+    _modo = modo
+    _runtime_enabled = True
 
     from docpact.config import DocpactConfig
     config_obj = DocpactConfig(run_tests=False)
@@ -65,14 +121,22 @@ def pytest_configure(config):
 
 
 @pytest.fixture(autouse=True, scope="session")
-def docpact_runtime_wrapper():
+def docpact_runtime_wrapper(request):
     """Fixture de sesión autouse de pytest.
+
+    Solo se activa si el runtime esta habilitado (opt-in via env o toml).
+    Por defecto esta DESACTIVADO para no interferir con tests legitimos.
 
     Se ejecuta cuando Django y la base de datos de test ya están cargados.
     Importa dinámicamente y envuelve las funciones declaradas.
     """
     import importlib
-    global _contratos_map, _wrapped_functions, _modo
+    global _contratos_map, _wrapped_functions, _modo, _runtime_enabled
+
+    # Opt-in: si el runtime no fue habilitado, no hacemos nada.
+    if not _runtime_enabled:
+        yield
+        return
 
     for module_name, funciones in _contratos_map.items():
         try:
@@ -116,3 +180,7 @@ def docpact_runtime_wrapper():
                                 setattr(loaded_module, func_name, wrapped_func)
                         except Exception:
                             pass
+
+    # Yield para que pytest no falle por falta de yield en fixture.
+    # No hay cleanup que hacer — el wrapping es permanente para esta sesion.
+    yield
