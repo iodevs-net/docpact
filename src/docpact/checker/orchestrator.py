@@ -231,6 +231,38 @@ class ResultadoProyecto:
         """
         return len(self.archivos)
 
+    def _ponderar_hallazgos(self) -> tuple[int, int]:
+        """Agrupa hallazgos por campo y aplica pesos diferenciales.
+
+        Returns:
+            (total_ponderado_errores, total_ponderado_warnings)
+        """
+        PESOS_ERROR = {
+            "rn_tests": 20,
+            "side_effects": 15,
+            "presencia": 12,
+            "rn": 10,
+            "dependencias": 5,
+        }
+        PESOS_WARNING = {
+            "side_effects": 5,
+            "rn": 3,
+            "dependencias": 2,
+        }
+        ERROR_DEFAULT = 10
+        WARNING_DEFAULT = 3
+
+        err_ponderado = 0
+        warn_ponderado = 0
+        for archivo in self.archivos:
+            for func in archivo.funciones:
+                for h in func.hallazgos:
+                    if h.tipo == "error":
+                        err_ponderado += PESOS_ERROR.get(h.campo, ERROR_DEFAULT)
+                    elif h.tipo == "warning":
+                        warn_ponderado += PESOS_WARNING.get(h.campo, WARNING_DEFAULT)
+        return err_ponderado, warn_ponderado
+
     def calcular_score(self) -> int:
         """Calcula el score AI-Native (0-100).
 
@@ -249,14 +281,15 @@ class ResultadoProyecto:
             penalty_sin = min(30, int((sin_contrato / self.total_funciones) * 50))
             score -= penalty_sin
 
-        # Penalización por errores de verificación
-        if self.total_errores > 0:
-            penalty_errores = min(40, self.total_errores * 10)
+        # Penalización ponderada por errores de verificación
+        err_pond, warn_pond = self._ponderar_hallazgos()
+        if err_pond > 0:
+            penalty_errores = min(40, err_pond)
             score -= penalty_errores
 
-        # Penalización por warnings
-        if self.total_warnings > 0:
-            penalty_warnings = min(15, self.total_warnings * 3)
+        # Penalización ponderada por warnings
+        if warn_pond > 0:
+            penalty_warnings = min(15, warn_pond)
             score -= penalty_warnings
 
         return max(0, score)
@@ -1236,13 +1269,85 @@ def _check_signature(
     hallazgos: list[Hallazgo],
     tiene_future_annotations: bool = False,
 ) -> None:
-    """DEPRECATED: Verificación de firma desactivada (F2).
+    """Verifica que los parámetros del CONTRATO coincidan con la firma real.
 
-    Generaba falsos positivos con tipos dinámicos (Any, object) y
-    from __future__ import annotations. La verificación real de tipos
-    se delega a mypy/pyright. Se mantiene el stub para no romper llamadas.
+    No verifica tipos (delegado a mypy/pyright), solo nombres de parámetros.
+    Omite self/cls automáticamente.
+    Detecta parámetros virtuales (extraídos de kwargs.pop/get en el cuerpo).
     """
-    return
+    if not contrato.input:
+        return
+
+    # Extraer parámetros reales del nodo AST
+    params_reales = set()
+    for arg in node.args.args:
+        if arg.arg not in ("self", "cls"):
+            params_reales.add(arg.arg)
+    for arg in node.args.kwonlyargs:
+        if arg.arg not in ("self", "cls"):
+            params_reales.add(arg.arg)
+    kwarg_name = node.args.kwarg.arg if node.args.kwarg else None
+    vararg_name = node.args.vararg.arg if node.args.vararg else None
+    if vararg_name:
+        params_reales.add(vararg_name)
+    if kwarg_name:
+        params_reales.add(kwarg_name)
+
+    # Virtual params: nombres extraídos de kwargs.pop("x") / kwargs.get("x") en el cuerpo
+    if kwarg_name:
+        for subnode in ast.walk(node):
+            if isinstance(subnode, ast.Call):
+                func = subnode.func
+                if (isinstance(func, ast.Attribute)
+                        and func.attr in ("pop", "get")
+                        and isinstance(func.value, ast.Name)
+                        and func.value.id == kwarg_name
+                        and subnode.args
+                        and isinstance(subnode.args[0], ast.Constant)
+                        and isinstance(subnode.args[0].value, str)):
+                    params_reales.add(subnode.args[0].value)
+
+    params_contrato = set(contrato.input.keys())
+
+    # Normalizar nombres: CONTRATO puede tener *args/**kwargs vs args/kwargs
+    def _normalizar(n: str) -> str:
+        return n.lstrip("*")
+
+    params_contrato_norm = {_normalizar(p) for p in params_contrato}
+
+    # Parámetros en CONTRATO que no existen en la función
+    for p in params_contrato:
+        if _normalizar(p) not in params_reales:
+            hallazgos.append(
+                Hallazgo(
+                    tipo="warning",
+                    campo="presencia",
+                    funcion=nombre,
+                    archivo=archivo,
+                    linea=node.lineno,
+                    mensaje=f"'{nombre}': CONTRATO declara parámetro '{p}' "
+                    f"que no existe en la firma real",
+                    sugerencia=f"Elimina '{p}' del bloque input del CONTRATO "
+                    f"o agrega el parámetro a la función",
+                )
+            )
+
+    # Parámetros reales sin documentar en CONTRATO
+    for p in params_reales:
+        if p not in params_contrato_norm:
+            hallazgos.append(
+                Hallazgo(
+                    tipo="warning",
+                    campo="presencia",
+                    funcion=nombre,
+                    archivo=archivo,
+                    linea=node.lineno,
+                    mensaje=f"'{nombre}': parámetro '{p}' no documentado en "
+                    f"CONTRATO input",
+                    sugerencia=f"Agrega '{p}: <tipo> — <descripción>' al bloque "
+                    f"input del CONTRATO",
+                )
+            )
 
 
 def _introspectar_firma(
@@ -1265,6 +1370,16 @@ def _introspectar_firma(
             except Exception:
                 tipo = "Any"
         inputs[arg.arg] = CampoInput(nombre=arg.arg, tipo=tipo)
+
+    # *args y **kwargs
+    if node.args.vararg and node.args.vararg.arg not in ("self", "cls"):
+        inputs[node.args.vararg.arg] = CampoInput(
+            nombre=node.args.vararg.arg, tipo="tuple"
+        )
+    if node.args.kwarg and node.args.kwarg.arg not in ("self", "cls"):
+        inputs[node.args.kwarg.arg] = CampoInput(
+            nombre=node.args.kwarg.arg, tipo="dict"
+        )
 
     # Mapear retorno
     if node.returns:

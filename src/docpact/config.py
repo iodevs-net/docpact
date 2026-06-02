@@ -54,6 +54,7 @@ class DocpactConfig:
         modules: Optional[dict[str, dict]] = None,
         types_allowlist: Optional[set[str]] = None,
         run_tests: bool = True,
+        run_runtime: bool = True,
     ):
         self.strict = strict
         self.min_score = min_score
@@ -65,6 +66,7 @@ class DocpactConfig:
         self.modules = modules or {}
         self.types_allowlist: set[str] = types_allowlist or set()
         self.run_tests = run_tests
+        self.run_runtime = run_runtime
         self._patrones_compilados: Optional[dict[str, list[re.Pattern[str]]]] = None
 
     def debe_suprimir(self, mensaje: str) -> bool:

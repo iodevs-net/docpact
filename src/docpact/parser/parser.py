@@ -249,12 +249,21 @@ def _procesar_input(
     resultado: dict[str, Any],
     errores: list[ErrorParser],
 ) -> None:
-    """Procesa 'param_name: type — description'."""
+    """Procesa 'param_name: type — description'."""  # noqa: DOCPACT
     linea = token.valor
     partes = linea.split(":", 1)
     if len(partes) >= 2:
         nombre = partes[0].strip()
         resto = partes[1].strip()
+        # *args, **kwargs combined -> args/kwargs separados
+        if "," in nombre and ("*args" in nombre or "**kwargs" in nombre):
+            for raw in nombre.split(","):
+                n = raw.strip().lstrip("*")
+                if n in ("args", "kwargs") and n not in {ci.nombre for ci in resultado["input"]}:
+                    desc = resto.split("—", 1)[1].strip() if "—" in resto else resto
+                    tipo = resto.split("—", 1)[0].strip() if "—" in resto else ({"args": "tuple", "kwargs": "dict"}[n])
+                    resultado["input"].append(CampoInput(nombre=n, tipo=tipo, descripcion=desc))
+            return
         if "—" in resto:
             tipo, desc = resto.split("—", 1)
             resultado["input"].append(
