@@ -96,29 +96,76 @@ def tokenizar(docstring: str) -> list[Token]:
     primer_indent = lineas_restantes[0][3]
     nivel_campos = primer_indent
 
-    # Campos raíz válidos en docpact
-    CAMPOS_RAIZ = {"input", "output", "side_effects", "rn", "borde", "dependencias", "reglas"}
+    # Campos raíz válidos en docpact.
+    # Los campos semanticos (comportamiento, asume, produce) aceptan texto
+    # multi-linea con el marcador YAML "|" (ej. "comportamiento: |").
+    CAMPOS_RAIZ = {
+        "input", "output", "side_effects", "rn", "borde", "dependencias", "reglas",
+        # Campos semanticos nuevos (retrocompatibles)
+        "comportamiento", "asume", "produce",
+    }
 
-    for i, raw, stripped, indent in lineas_restantes:
+    # Detectar el patron "campo: |" (YAML block scalar) y consumir las lineas
+    # siguientes como parte del valor multi-linea.
+    n = len(lineas_restantes)
+    idx = 0
+    while idx < n:
+        i, raw, stripped, indent = lineas_restantes[idx]
         linea_num = i + 1
 
         # Clasificación semántica de campos raíz (independiente de espacios exactos)
         es_campo_raiz = False
+        nombre_campo = None
         if ":" in stripped:
             posible_raiz = stripped.split(":", 1)[0].strip().lower()
             if posible_raiz in CAMPOS_RAIZ:
                 es_campo_raiz = True
+                nombre_campo = posible_raiz
 
         if es_campo_raiz:
             if stripped.endswith(":"):
                 # Campo compuesto (ej. input:, rn:, dependencias:)
-                nombre_campo = stripped[:-1].strip()
                 tokens.append(
                     Token(TipoToken.CAMPO_COMPUESTO, nombre_campo, linea_num, indent)
                 )
+                idx += 1
+                continue
+            elif nombre_campo in ("comportamiento", "asume", "produce"):
+                # Campo semantico. Puede tener texto inline o bloque multi-linea con "|"
+                if "|" in stripped:
+                    # Formato YAML block scalar: "comportamiento: |"
+                    # Capturar las lineas siguientes con indent > nivel_campos
+                    lineas_valor = []
+                    idx += 1
+                    while idx < n:
+                        j, jraw, jstripped, jindent = lineas_restantes[idx]
+                        if jindent > nivel_campos and jstripped:
+                            lineas_valor.append(jstripped)
+                            idx += 1
+                        else:
+                            break
+                    valor = " ".join(lineas_valor)
+                    tokens.append(
+                        Token(
+                            TipoToken.CAMPO_SIMPLE,
+                            f"{nombre_campo}: {valor}",
+                            linea_num,
+                            indent,
+                        )
+                    )
+                    continue
+                else:
+                    # Formato inline: "comportamiento: descripcion corta"
+                    tokens.append(
+                        Token(TipoToken.CAMPO_SIMPLE, stripped, linea_num, indent)
+                    )
+                    idx += 1
+                    continue
             else:
-                # Campo simple (ej. side_effects: ninguno, rn: [RN-010])
+                # Campo simple normal (ej. side_effects: ninguno, rn: [RN-010])
                 tokens.append(Token(TipoToken.CAMPO_SIMPLE, stripped, linea_num, indent))
+                idx += 1
+                continue
 
         elif indent > nivel_campos and stripped.startswith("-"):
             # Item de lista
@@ -130,5 +177,7 @@ def tokenizar(docstring: str) -> list[Token]:
 
         else:
             tokens.append(Token(TipoToken.TEXTO_LIBRE, stripped, linea_num, indent))
+
+        idx += 1
 
     return tokens

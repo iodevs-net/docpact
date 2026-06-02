@@ -47,6 +47,10 @@ def parsear(tokens: list[Token]) -> tuple[Contrato, list[ErrorParser]]:
     rn_list: list[ReglaNegocio] = []
     borde_list: list[CasoBorde] = []
     deps_list: list[Dependencia] = []
+    # Campos semanticos (todos opcionales)
+    comportamiento: str | None = None
+    asume: str | None = None
+    produce: str | None = None
 
     i = 0
     while i < len(tokens):
@@ -65,7 +69,7 @@ def parsear(tokens: list[Token]) -> tuple[Contrato, list[ErrorParser]]:
             continue
 
         if token.tipo == TipoToken.CAMPO_SIMPLE:
-            n, side, out_type, out_desc, datos_extra = _parsear_campo_simple(
+            n, side, out_type, out_desc, datos_extra, semantico = _parsear_campo_simple(
                 token, i, errores
             )
             i = n
@@ -91,6 +95,13 @@ def parsear(tokens: list[Token]) -> tuple[Contrato, list[ErrorParser]]:
                 elif datos_extra["campo"] == "dependencias":
                     for item in datos_extra["items"]:
                         deps_list.append(Dependencia(ref=str(item)))
+            if semantico is not None:
+                if semantico["campo"] == "comportamiento":
+                    comportamiento = semantico["valor"]
+                elif semantico["campo"] == "asume":
+                    asume = semantico["valor"]
+                elif semantico["campo"] == "produce":
+                    produce = semantico["valor"]
             continue
 
         i += 1
@@ -103,6 +114,9 @@ def parsear(tokens: list[Token]) -> tuple[Contrato, list[ErrorParser]]:
         rn=rn_list,
         borde=borde_list,
         dependencias=deps_list,
+        comportamiento=comportamiento,
+        asume=asume,
+        produce=produce,
     )
     return contrato, errores
 
@@ -111,13 +125,16 @@ def _parsear_campo_simple(
     token: Token,
     idx: int,
     errores: list[ErrorParser],
-) -> tuple[int, list[SideEffect] | None, str | None, str, dict[str, Any] | None]:
-    """Parsea 'side_effects: valor', 'output: type — desc', o arrays JSON inline.
+) -> tuple[int, list[SideEffect] | None, str | None, str, dict[str, Any] | None, dict[str, Any] | None]:
+    """Parsea 'side_effects: valor', 'output: type — desc', 'comportamiento: ...',
+    o arrays JSON inline.
 
     Arrays JSON inline: rn: [RN-001], dependencias: ["a.py::X"]
+    Campos semanticos: comportamiento, asume, produce (texto libre)
 
     Returns:
-        (idx_siguiente, side_effects_list, output_type, output_desc, datos_extra)
+        (idx_siguiente, side_effects_list, output_type, output_desc,
+         datos_extra, dato_semantico)
     """
     import json
 
@@ -128,30 +145,38 @@ def _parsear_campo_simple(
                 "general", f"Campo simple mal formado: {token.valor}", token.linea
             )
         )
-        return idx + 1, None, None, "", None
+        return idx + 1, None, None, "", None, None
 
     nombre = partes[0].strip()
     valor = partes[1].strip()
 
     if nombre == "side_effects":
         if valor.lower() == "ninguno":
-            return idx + 1, [], None, "", None
+            return idx + 1, [], None, "", None, None
         items = [v.strip() for v in valor.split(",")]
         se_list = [SideEffect(descripcion=item) for item in items if item]
-        return idx + 1, se_list, None, "", None
+        return idx + 1, se_list, None, "", None, None
 
     elif nombre == "output":
         if " — " in valor:
             tipo, desc = valor.split(" — ", 1)
-            return idx + 1, None, tipo.strip(), desc.strip(), None
-        return idx + 1, None, valor, "", None
+            return idx + 1, None, tipo.strip(), desc.strip(), None, None
+        return idx + 1, None, valor, "", None, None
+
+    elif nombre in ("comportamiento", "asume", "produce"):
+        # Campo semantico: texto libre, opcional.
+        # Si el valor esta vacio (ej. "comportamiento: |" sin lineas),
+        # se considera None para no agregar ruido.
+        if not valor or valor == "|":
+            return idx + 1, None, None, "", None, None
+        return idx + 1, None, None, "", None, {"campo": nombre, "valor": valor}
 
     # JSON array inline: rn: [RN-001], dependencias: ["a.py::X"]
     if valor.startswith("[") and valor.endswith("]"):
         try:
             raw = json.loads(valor)
             if isinstance(raw, list):
-                return idx + 1, None, None, "", {"campo": nombre, "items": raw}
+                return idx + 1, None, None, "", {"campo": nombre, "items": raw}, None
         except json.JSONDecodeError:
             inner = valor[1:-1].strip()
             if inner:
@@ -163,9 +188,10 @@ def _parsear_campo_simple(
                         None,
                         "",
                         {"campo": nombre, "items": raw_items},
+                        None,
                     )
 
-    return idx + 1, None, None, "", None
+    return idx + 1, None, None, "", None, None
 
 
 def _parsear_campo_compuesto(
