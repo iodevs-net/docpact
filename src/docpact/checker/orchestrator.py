@@ -198,6 +198,10 @@ class ResultadoProyecto:
 
     archivos: list[ResultadoArchivo] = field(default_factory=list)
     config: DocpactConfig = field(default_factory=DocpactConfig)
+    # Cross-ref vs REGISTRO.md (poblados por check_proyecto si el archivo existe)
+    rns_fake: list = field(default_factory=list)        # list[RNFakeHallazgo]
+    rns_huerfanas: list = field(default_factory=list)   # list[RNHuerfanaHallazgo]
+    rns_placeholders: list[str] = field(default_factory=list)  # RN-XXX, etc.
 
     @property
     def total_funciones(self) -> int:
@@ -228,7 +232,12 @@ class ResultadoProyecto:
         return len(self.archivos)
 
     def calcular_score(self) -> int:
-        """Calcula el score AI-Native (0-100)."""
+        """Calcula el score AI-Native (0-100).
+
+        DEPRECADO 2026-06-02: este score es "vanity metric" — no predice
+        bugs evitados ni calidad real. Usar `metricas_honestas()` en su lugar.
+        Se mantiene por compatibilidad con integraciones existentes.
+        """
         if self.total_funciones == 0:
             return 0
 
@@ -251,6 +260,29 @@ class ResultadoProyecto:
             score -= penalty_warnings
 
         return max(0, score)
+
+    def metricas_honestas(self) -> dict:
+        """Métricas que SÍ predicen calidad del proyecto (vs REGISTRO).
+
+        Returns:
+            dict con:
+              - rns_fake: count de RNs declaradas en CONTRATO pero no en REGISTRO
+                (indica MENTIRA del agente)
+              - rns_huerfanas: count de RNs en REGISTRO sin CONTRATO
+                (indica OLVIDO: regla documentada pero no implementada/declarada)
+              - rns_placeholders: count de placeholders (RN-XXX) excluidos
+              - funciones_sin_contrato: count de funciones publicas sin CONTRATO
+              - funciones_totales: count total de funciones analizadas
+              - score_legacy: el score viejo (deprecado), solo para referencia
+        """
+        return {
+            "rns_fake": len(self.rns_fake),
+            "rns_huerfanas": len(self.rns_huerfanas),
+            "rns_placeholders": len(self.rns_placeholders),
+            "funciones_sin_contrato": self.total_funciones - self.funciones_con_contrato,
+            "funciones_totales": self.total_funciones,
+            "score_legacy": self.calcular_score(),  # deprecado
+        }
 
     @property
     def nivel(self) -> str:
@@ -1071,6 +1103,40 @@ def check_proyecto(
 
     resultado = ResultadoProyecto(config=config)
     resultado.archivos = resultados_archivos
+
+    # Cross-reference contra REGISTRO.md: detectar RNs fake y huerfanas.
+    # Esto resuelve el problema de agentes que declaran 'rn: [RN-XXX]' sin
+    # verificar que la regla exista en la documentacion canonica.
+    # Envuelto en try/except: si REGISTRO no existe o hay error, no rompemos.
+    try:
+        from docpact.checker.rn_registry import crossref_contratos_registro
+        from docpact.models.contrato import ContratoExtraido, TipoFuncion
+
+        todos_los_contratos: list = []
+        for ra in resultado.archivos:
+            for rf in ra.funciones:
+                if rf.contrato:
+                    todos_los_contratos.append(
+                        ContratoExtraido(
+                            funcion=rf.nombre,
+                            tipo=TipoFuncion(rf.tipo) if hasattr(rf, "tipo") else TipoFuncion.FUNCTION,
+                            archivo=ra.archivo,
+                            linea=rf.linea if hasattr(rf, "linea") else 0,
+                            contrato=rf.contrato,
+                            raw_text="",
+                            errores=[],
+                        )
+                    )
+
+        if todos_los_contratos and proyecto_root is not None:
+            crossref = crossref_contratos_registro(todos_los_contratos, proyecto_root)
+            resultado.rns_fake = crossref.rns_fake
+            resultado.rns_huerfanas = crossref.rns_huerfanas
+            resultado.rns_placeholders = crossref.rns_placeholders
+    except Exception:
+        # Cross-ref opcional. Si falla (REGISTRO no existe, import error, etc),
+        # los campos quedan vacíos y el resto del check continúa normalmente.
+        pass
 
     # Cross-reference RN: verificar que funciones llamadas tengan las RNs
     if resultados_archivos:
