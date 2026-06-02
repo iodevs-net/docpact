@@ -77,7 +77,24 @@ def main(argv: list[str] | None = None) -> int:
         "--min-score",
         type=int,
         default=0,
-        help="Score mínimo requerido. Falla si el score es menor (ej: --min-score 90)",
+        help="DEPRECADO: usar --max-rns-fake y --max-rns-huerfanas. Falla si el score (vanity metric) es menor",
+    )
+    check_parser.add_argument(
+        "--max-rns-fake",
+        type=int,
+        default=0,
+        help="Máximo de RNs fake permitidas (mentiras del agente en CONTRATOS). Falla si se supera. Default: 0",
+    )
+    check_parser.add_argument(
+        "--max-rns-huerfanas",
+        type=int,
+        default=None,
+        help="Máximo de RNs huerfanas permitidas (en REGISTRO sin CONTRATO). Falla si se supera. Default: no falla",
+    )
+    check_parser.add_argument(
+        "--show-legacy-score",
+        action="store_true",
+        help="Muestra el score AI-Native deprecado (0-100). Por default se ocultan las métricas vanidosas",
     )
     check_parser.add_argument(
         "--no-run-tests",
@@ -104,7 +121,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     lint_parser.add_argument(
         "--min-score", type=int, default=0,
-        help="Score mínimo requerido (ej: --min-score 90)",
+        help="DEPRECADO: usar --max-rns-fake y --max-rns-huerfanas. Falla si el score (vanity metric) es menor",
+    )
+    lint_parser.add_argument(
+        "--max-rns-fake", type=int, default=0,
+        help="Máximo de RNs fake permitidas. Falla si se supera. Default: 0",
+    )
+    lint_parser.add_argument(
+        "--max-rns-huerfanas", type=int, default=None,
+        help="Máximo de RNs huerfanas permitidas. Falla si se supera. Default: no falla",
+    )
+    lint_parser.add_argument(
+        "--show-legacy-score", action="store_true",
+        help="Muestra el score AI-Native deprecado (0-100). Por default se ocultan las métricas vanidosas",
     )
     lint_parser.add_argument(
         "--fix", action="store_true",
@@ -405,6 +434,20 @@ def _cmd_check(args: argparse.Namespace) -> int:
     tw = resultado.total_warnings
     score = resultado.calcular_score()
     nivel = resultado.nivel
+    # metricas_honestas puede no existir en versiones viejas del checker;
+    # fallback defensivo para que el CLI no rompa al actualizar
+    _honestas = getattr(resultado, "metricas_honestas", None)
+    if callable(_honestas):
+        metricas = _honestas()
+    else:
+        metricas = {
+            "rns_fake": len(getattr(resultado, "rns_fake", [])),
+            "rns_huerfanas": len(getattr(resultado, "rns_huerfanas", [])),
+            "rns_placeholders": len(getattr(resultado, "rns_placeholders", [])),
+            "funciones_sin_contrato": tf - tc,
+            "funciones_totales": tf,
+            "score_legacy": score,
+        }
 
     print(f"\n📊 {tf} funciones públicas encontradas")
     print(f"✅ {tc} contratos válidos")
@@ -416,10 +459,51 @@ def _cmd_check(args: argparse.Namespace) -> int:
         print(f"❌ {te} errores")
     else:
         print(f"✅ 0 errores")
-    print(f"\nScore: {score}/100 — {nivel}")
 
+    # ── Métricas honestas: lo que SÍ predice calidad ──
+    rns_fake = metricas["rns_fake"]
+    rns_huerfanas = metricas["rns_huerfanas"]
+    rns_placeholders = metricas["rns_placeholders"]
+    sin_contrato = metricas["funciones_sin_contrato"]
+
+    print(f"\n🩺 Métricas honestas (lo que SÍ predice calidad):")
+    if rns_fake == 0 and rns_huerfanas == 0:
+        print(f"   ✅ Cero mentiras y cero olvidos vs REGISTRO.md")
+    else:
+        if rns_fake > 0:
+            print(f"   🚨 RNs fake (en CONTRATO pero NO en REGISTRO): {rns_fake}")
+            for fake in resultado.rns_fake[:5]:
+                arch_short = fake.archivo.rsplit("/", 1)[-1] if "/" in fake.archivo else fake.archivo
+                print(f"      └─ {fake.rn_id} en {arch_short}:{fake.linea} ({fake.funcion})")
+            if len(resultado.rns_fake) > 5:
+                print(f"      └─ ... y {len(resultado.rns_fake) - 5} más (usar --fix o revisar manualmente)")
+        if rns_huerfanas > 0:
+            print(f"   📋 RNs huerfanas (en REGISTRO pero NO en CONTRATO): {rns_huerfanas}")
+            for h in resultado.rns_huerfanas[:5]:
+                print(f"      └─ {h.rn_id}: {h.descripcion[:80]}")
+            if len(resultado.rns_huerfanas) > 5:
+                print(f"      └─ ... y {len(resultado.rns_huerfanas) - 5} más")
+    if rns_placeholders > 0:
+        print(f"   🚫 Placeholders excluidos (RN-XXX, RN-NO-APLICA, etc): {rns_placeholders}")
+    if sin_contrato > 0:
+        print(f"   ❌ Funciones públicas sin CONTRATO: {sin_contrato}")
+
+    # ── Score legacy: deprecado, solo si el usuario lo pide ──
+    if args.show_legacy_score:
+        print(f"\n   [score legacy DEPRECADO: {score}/100 — {nivel}]")
+
+    # ── Falla por métricas honestas (gating) ──
+    if rns_fake > args.max_rns_fake:
+        print(f"\n❌ {rns_fake} RNs fake superan el máximo permitido ({args.max_rns_fake})")
+        return 1
+    if args.max_rns_huerfanas is not None and rns_huerfanas > args.max_rns_huerfanas:
+        print(f"\n❌ {rns_huerfanas} RNs huerfanas superan el máximo permitido ({args.max_rns_huerfanas})")
+        return 1
+
+    # ── Falla por score legacy (compat) ──
     if args.min_score and score < args.min_score:
-        print(f"\n❌ Score {score} menor al mínimo requerido ({args.min_score})")
+        print(f"\n❌ Score legacy {score} menor al mínimo requerido ({args.min_score})")
+        print(f"   ADVERTENCIA: --min-score usa el score DEPRECADO. Migrar a --max-rns-fake.")
         return 1
 
     # Auto-generar CONTRATOs si --fix está activo
@@ -525,6 +609,20 @@ def _cmd_lint(args: argparse.Namespace) -> int:
     tw = resultado.total_warnings
     score = resultado.calcular_score()
     nivel = resultado.nivel
+    # metricas_honestas puede no existir en versiones viejas del checker;
+    # fallback defensivo para que el CLI no rompa al actualizar
+    _honestas = getattr(resultado, "metricas_honestas", None)
+    if callable(_honestas):
+        metricas = _honestas()
+    else:
+        metricas = {
+            "rns_fake": len(getattr(resultado, "rns_fake", [])),
+            "rns_huerfanas": len(getattr(resultado, "rns_huerfanas", [])),
+            "rns_placeholders": len(getattr(resultado, "rns_placeholders", [])),
+            "funciones_sin_contrato": tf - tc,
+            "funciones_totales": tf,
+            "score_legacy": score,
+        }
 
     print(f"\n📊 {tf} funciones públicas encontradas")
     print(f"✅ {tc} contratos válidos")
@@ -536,7 +634,46 @@ def _cmd_lint(args: argparse.Namespace) -> int:
         print(f"❌ {te} errores")
     else:
         print(f"✅ 0 errores")
-    print(f"\nScore: {score}/100 — {nivel}")
+
+    # ── Métricas honestas: lo que SÍ predice calidad ──
+    rns_fake = metricas["rns_fake"]
+    rns_huerfanas = metricas["rns_huerfanas"]
+    rns_placeholders = metricas["rns_placeholders"]
+    sin_contrato = metricas["funciones_sin_contrato"]
+
+    print(f"\n🩺 Métricas honestas (lo que SÍ predice calidad):")
+    if rns_fake == 0 and rns_huerfanas == 0:
+        print(f"   ✅ Cero mentiras y cero olvidos vs REGISTRO.md")
+    else:
+        if rns_fake > 0:
+            print(f"   🚨 RNs fake (en CONTRATO pero NO en REGISTRO): {rns_fake}")
+        if rns_huerfanas > 0:
+            print(f"   📋 RNs huerfanas (en REGISTRO pero NO en CONTRATO): {rns_huerfanas}")
+    if rns_placeholders > 0:
+        print(f"   🚫 Placeholders excluidos (RN-XXX, RN-NO-APLICA, etc): {rns_placeholders}")
+    if sin_contrato > 0:
+        print(f"   ❌ Funciones públicas sin CONTRATO: {sin_contrato}")
+
+    # ── Score legacy: deprecado, solo si el usuario lo pide ──
+    if getattr(args, "show_legacy_score", False):
+        print(f"\n   [score legacy DEPRECADO: {score}/100 — {nivel}]")
+
+    # ── Falla por métricas honestas (gating) ──
+    max_fake = getattr(args, "max_rns_fake", 0)
+    if rns_fake > max_fake:
+        print(f"\n❌ {rns_fake} RNs fake superan el máximo permitido ({max_fake})")
+        return 1
+    max_huerfanas = getattr(args, "max_rns_huerfanas", None)
+    if max_huerfanas is not None and rns_huerfanas > max_huerfanas:
+        print(f"\n❌ {rns_huerfanas} RNs huerfanas superan el máximo permitido ({max_huerfanas})")
+        return 1
+
+    # ── Falla por score legacy (compat) ──
+    min_score = getattr(args, "min_score", 0)
+    if min_score and score < min_score:
+        print(f"\n❌ Score legacy {score} menor al mínimo requerido ({min_score})")
+        print(f"   ADVERTENCIA: --min-score usa el score DEPRECADO. Migrar a --max-rns-fake.")
+        return 1
 
     # Auto-fix si --fix
     if getattr(args, "fix", False):
@@ -568,10 +705,6 @@ def _cmd_lint(args: argparse.Namespace) -> int:
                     print(f"   {h.mensaje}")
                     if h.sugerencia:
                         print(f"   💡 {h.sugerencia}")
-
-    if getattr(args, "min_score", 0) and score < args.min_score:
-        print(f"\n❌ Score {score} menor al mínimo requerido ({args.min_score})")
-        return 1
 
     if te > 0:
         return 1
