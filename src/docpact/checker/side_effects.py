@@ -52,15 +52,18 @@ def check_side_effects(
 
     # Caso 2: declaró efectos pero NO se encontró NINGUNA categoría
     # (descripciones en español vs categorías técnicas son incomparables)
-    # Solo advertir si hay 0 efectos encontrados siendo que se declararon
-    if efectos_declarados and not efectos_encontrados:
+    # Solo advertir si hay 0 efectos encontrados siendo que se declararon.
+    # Excepción: si la función declara `dependencias:` explícitamente, asumimos
+    # que delega el side effect a esas funciones. La advertencia sería ruido.
+    if efectos_declarados and not efectos_encontrados and not contrato.dependencias:
         errores.append(
             ErrorParser(
                 "side_effects",
                 f"'{nombre_funcion}': declaró side_effects pero no se "
                 f"detectaron llamadas con patrones conocidos",
-                sugerencia="Si la función delega a otros servicios, está bien. "
-                "Agrega patrones personalizados en docpact.toml si quieres tracking fino.",
+                sugerencia="Si la función delega a otros servicios, declarálos "
+                "en 'dependencias:' del CONTRATO, o agrega patrones personalizados "
+                "en docpact.toml si quieres tracking fino.",
             )
         )
 

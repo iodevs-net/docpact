@@ -160,3 +160,29 @@ def foo():
     config = DocpactConfig()
     errores = check_side_effects(node, contrato, config, "foo", "test.py")
     assert len(errores) == 0
+
+
+def test_check_side_effects_declaro_sin_llamadas_con_dependencias():
+    """Si la función declara dependencias explícitas, NO advertir.
+
+    Cuando una función tiene `dependencias:` en el CONTRATO, está diciendo
+    explícitamente que delega la lógica (y sus side effects) a esas funciones.
+    El checker de side_effects no debe advertir en este caso.
+    """
+    from docpact.models.contrato import Dependencia
+
+    codigo = """
+def foo(request, cliente_id):
+    sucursal = crear_sucursal(cliente_id, data, request.user)
+    return _response(sucursal)
+    """
+    node = _parse_funcion(codigo)
+    contrato = Contrato(
+        side_effects=[SideEffect("Crea sucursal en BD")],
+        dependencias=[
+            Dependencia("clientes/services_sucursal.py::crear_sucursal"),
+        ],
+    )
+    config = DocpactConfig()
+    errores = check_side_effects(node, contrato, config, "foo", "test.py")
+    assert len(errores) == 0, f"Esperaba 0 errores por delegación explícita, obtuve: {errores}"
