@@ -149,6 +149,11 @@ def _parsear_campo_simple(
 
     nombre = partes[0].strip()
     valor = partes[1].strip()
+    # Strip inline Python comment (e.g. "rn: [RN-001]  # comentario").
+    # Without this, valores con comentario trailing rompen el parser de
+    # JSON array (la línea no termina en "]") y el bloque `rn:` se ignora.
+    if " #" in valor:
+        valor = valor.split(" #", 1)[0].rstrip()
 
     if nombre == "side_effects":
         if valor.lower() == "ninguno":
