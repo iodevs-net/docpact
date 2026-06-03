@@ -21,14 +21,28 @@ from docpact.checker.rn_registry import cargar_registro
 
 
 def _try_load_embedder() -> Any | None:
-    """Intenta cargar TextEmbedding de FastEmbed.
+    """Intenta cargar TextEmbedding de FastEmbed con multilingual-e5-small.
+
+    Modelo: intfloat/multilingual-e5-small (384 dims, ONNX, 60+ idiomas).
+    Mejor para retrieval bilingüe (español/inglés) que bge-small-en-v1.5.
+    Si fastembed no está instalado, retorna None (fallback a keyword).
 
     Returns:
         TextEmbedding instance o None si fastembed no está instalado.
     """
     try:
         from fastembed import TextEmbedding
-        return TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+        from fastembed.common.model_description import PoolingType, ModelSource
+
+        TextEmbedding.add_custom_model(
+            model="intfloat/multilingual-e5-small",
+            pooling=PoolingType.MEAN,
+            normalization=True,
+            sources=ModelSource(hf="intfloat/multilingual-e5-small"),
+            dim=384,
+            model_file="onnx/model.onnx",
+        )
+        return TextEmbedding(model_name="intfloat/multilingual-e5-small")
     except ImportError:
         return None
 
@@ -109,7 +123,7 @@ def _generate_embeddings(
             rn_embeddings[key] = [round(float(x), 6) for x in vec]
 
     return {
-        "model": "BAAI/bge-small-en-v1.5",
+        "model": "intfloat/multilingual-e5-small",
         "dimension": 384,
         "funciones": func_embeddings,
         "rns": rn_embeddings,
