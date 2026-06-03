@@ -168,6 +168,18 @@ def main(argv: list[str] | None = None) -> int:
         help="Regenerar índice aunque ya exista",
     )
 
+    # ├─ validate — pre-commit hook (rápido, sin tests)
+    validate_parser = subparsers.add_parser(
+        "validate", help="Valida cambios críticos (pre-commit hook, <1s)"
+    )
+    validate_parser.add_argument(
+        "files", nargs="*", help="Archivos a validar (git staged files si se omite)"
+    )
+    validate_parser.add_argument(
+        "--staged", action="store_true",
+        help="Usar archivos staged de git (default si no se pasan archivos)",
+    )
+
     # ├─ mcp
     mcp_parser = subparsers.add_parser(
         "mcp", help="Inicia el MCP server para agentes (JSON-RPC sobre stdio)"
@@ -249,6 +261,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_run(args)
     elif args.command == "index":
         return _cmd_index(args)
+    elif args.command == "validate":
+        return _cmd_validate(args)
     elif args.command == "mcp":
         return _cmd_mcp(args)
     elif args.command == "doctor":
@@ -899,6 +913,84 @@ def _cmd_index(args: argparse.Namespace) -> int:
     print(f"   RNs: {stats['total_rns']}")
     print(f"   RNs con test: {stats['rns_con_test']}")
     print(f"   Tamaño: {os.path.getsize(path)/1024:.1f} KB")
+    return 0
+
+
+def _cmd_validate(args: argparse.Namespace) -> int:
+    """Comando validate: validación rápida para pre-commit hook.
+
+    Verifica SOLO errores críticos (RN fake, CONTRATO roto).
+    NO ejecuta tests (para eso está el MCP).
+    Debe terminar en <1s.
+    """
+    import subprocess
+    import os
+
+    # Obtener archivos a validar
+    files = args.files
+    if not files and args.staged:
+        # Obtener archivos staged de git
+        try:
+            result = subprocess.run(
+                ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+                capture_output=True, text=True, timeout=5,
+            )
+            files = [f for f in result.stdout.strip().split("\n") if f.endswith(".py")]
+        except Exception:
+            print("⚠️  No se pudieron obtener archivos staged", file=sys.stderr)
+            return 1
+
+    if not files:
+        print("✅ No hay archivos Python para validar")
+        return 0
+
+    # Cargar índice
+    from docpact.index import cargar_index
+    import re
+
+    project_root = os.path.abspath(".")
+    index = cargar_index(project_root)
+    if index is None:
+        print("⚠️  Índice no encontrado. Ejecuta: docpact index")
+        return 0  # No bloquear si no hay índice
+
+    errores = []
+    warnings = []
+
+    for filepath in files:
+        if not os.path.exists(filepath):
+            continue
+
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+        except Exception:
+            continue
+
+        # Buscar RNs declaradas en el archivo
+        rns_declaradas = re.findall(r"RN-[\w-]+", content)
+
+        for rn_id in set(rns_declaradas):
+            if rn_id.upper().startswith("RN-XXX") or "NO-APLICA" in rn_id.upper():
+                continue  # Placeholders OK
+
+            rn_info = index["rns"].get(rn_id)
+            if not rn_info:
+                errores.append({
+                    "archivo": filepath,
+                    "rn": rn_id,
+                    "mensaje": f"RN '{rn_id}' no existe en REGISTRO.md",
+                })
+
+    if errores:
+        print(f"❌ {len(errores)} errores críticos:")
+        for e in errores:
+            print(f"   {e['archivo']}: {e['mensaje']}")
+        print("\n💡 Corrige estos errores antes de commitar.")
+        print("   Para ver warnings: docpact check .")
+        return 1
+
+    print(f"✅ {len(files)} archivos validados OK")
     return 0
 
 
