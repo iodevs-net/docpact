@@ -17,7 +17,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from docpact.index import cargar_index, generar_index, guardar_index
+from docpact.index import (
+    cargar_index,
+    generar_index,
+    guardar_index,
+    _cosine_similarity,
+    _try_load_embedder,
+)
 
 logger = logging.getLogger("docpact.mcp")
 logging.basicConfig(
@@ -31,14 +37,24 @@ logging.basicConfig(
 
 _index: dict[str, Any] | None = None
 _project_root: str | None = None
+_embedder: Any | None = None  # FastEmbed TextEmbedding (optional)
 
 
 def _cargar_o_generar_index(project_root: str, force: bool = False) -> dict[str, Any]:
     """Carga índice existente o genera uno nuevo.
 
     Auto-regenera si el índice está obsoleto (más viejo que un .py modificado).
+    Inicializa el embedder FastEmbed una sola vez.
     """
-    global _index, _project_root
+    global _index, _project_root, _embedder
+
+    # Inicializar embedder una sola vez
+    if _embedder is None:
+        _embedder = _try_load_embedder()
+        if _embedder is not None:
+            logger.info("FastEmbed cargado: BAAI/bge-small-en-v1.5 (búsqueda semántica habilitada)")
+        else:
+            logger.info("FastEmbed no disponible: búsqueda keyword-only")
 
     index_path = Path(project_root) / ".docpact" / "index.json"
 
@@ -56,7 +72,7 @@ def _cargar_o_generar_index(project_root: str, force: bool = False) -> dict[str,
         # Si el índice es más viejo que el .py más reciente, regenerar
         if latest_py > index_mtime:
             logger.info("Índice obsoleto, regenerando...")
-            index = generar_index(project_root)
+            index = generar_index(project_root, embedder=_embedder)
             guardar_index(index, project_root)
             _index = index
             _project_root = project_root
@@ -66,9 +82,10 @@ def _cargar_o_generar_index(project_root: str, force: bool = False) -> dict[str,
     index = cargar_index(project_root)
     if index is not None:
         logger.info(
-            "Índice cargado: %d funciones, %d RNs",
+            "Índice cargado: %d funciones, %d RNs%s",
             index["stats"]["total_funciones"],
             index["stats"]["total_rns"],
+            " (con embeddings)" if index["stats"].get("has_embeddings") else "",
         )
         _index = index
         _project_root = project_root
@@ -76,7 +93,7 @@ def _cargar_o_generar_index(project_root: str, force: bool = False) -> dict[str,
 
     # Generar nuevo
     logger.info("Generando índice para %s...", project_root)
-    index = generar_index(project_root)
+    index = generar_index(project_root, embedder=_embedder)
     guardar_index(index, project_root)
     logger.info(
         "Índice generado: %d funciones, %d RNs",
@@ -156,17 +173,27 @@ def tool_obtener_contexto_funcion(nombre_funcion: str) -> dict[str, Any]:
 def tool_buscar_por_intencion(intencion: str) -> dict[str, Any]:
     """Tool 2: Buscar funciones por intención en lenguaje natural.
 
-    Usa matching de palabras clave contra nombre, comportamiento, RNs.
+    Si hay embeddings disponibles, usa búsqueda semántica (cosine similarity)
+    combinada con keyword matching (0.7 semántica + 0.3 keyword).
+    Fallback a keyword-only si no hay embeddings.
     Retorna top 5 resultados con score de similitud.
     """
     if _index is None:
         return {"error": "Índice no cargado"}
 
     palabras = intencion.lower().split()
-    scores: list[tuple[float, dict]] = []
+    embeddings = _index.get("embeddings")
+    tiene_semantica = (
+        embeddings is not None
+        and embeddings.get("funciones")
+        and _embedder is not None
+    )
+
+    scores: list[tuple[float, str, dict]] = []  # (score, key, func)
 
     for key, f in _index["funciones"].items():
-        score = 0.0
+        # ── Keyword score (original) ──
+        kw_score = 0.0
         texto_busqueda = (
             f["funcion"].lower()
             + " "
@@ -174,21 +201,40 @@ def tool_buscar_por_intencion(intencion: str) -> dict[str, Any]:
             + " "
             + f["archivo"].lower()
         )
-
         for palabra in palabras:
             if palabra in texto_busqueda:
-                score += 1.0
+                kw_score += 1.0
             if palabra in f["funcion"].lower():
-                score += 0.5  # Bonus por match en nombre
+                kw_score += 0.5
 
-        if score > 0:
-            scores.append((score, f))
+        if tiene_semantica:
+            # ── Semantic score ──
+            func_emb = embeddings["funciones"].get(key)
+            if func_emb is not None and _embedder is not None:
+                query_emb = list(_embedder.embed([intencion]))[0]
+                sem_score = _cosine_similarity(
+                    [float(x) for x in query_emb],
+                    func_emb,
+                )
+                # Normalizar de [-1, 1] a [0, 1]
+                sem_score = max(0.0, (sem_score + 1.0) / 2.0)
+                # Combinar: 0.7 semántica + 0.3 keyword
+                combined = 0.7 * sem_score + 0.3 * min(kw_score / 3.0, 1.0)
+            else:
+                combined = kw_score
+        else:
+            combined = kw_score
+
+        if combined > 0 or kw_score > 0:
+            scores.append((combined if tiene_semantica else kw_score, key, f))
 
     scores.sort(key=lambda x: -x[0])
-    top5 = [f for _, f in scores[:5]]
+    top5 = [(f, s) for s, _, f in scores[:5]]
 
     return {
-        "resultados": top5,
+        "resultados": [f for f, _ in top5],
+        "scores": [round(s, 4) for _, s in top5],
+        "busqueda_tipo": "semantica" if tiene_semantica else "keyword",
         "count": len(top5),
         "total_en_indice": len(_index["funciones"]),
     }
@@ -386,31 +432,54 @@ def tool_obtener_rn(rn_id: str) -> dict[str, Any]:
 def tool_buscar_rns_por_tema(tema: str) -> dict[str, Any]:
     """Tool 5: Buscar RNs por tema/palabra clave.
 
-    Busca en descripciones de RNs y nombres de funciones.
+    Si hay embeddings, usa búsqueda semántica combinada con keyword.
+    Fallback a keyword-only si no hay embeddings.
     Retorna RNs relevantes con sus funciones.
     """
     if _index is None:
         return {"error": "Índice no cargado"}
 
     tema_lower = tema.lower()
-    resultados = []
+    embeddings = _index.get("embeddings")
+    tiene_semantica = (
+        embeddings is not None
+        and embeddings.get("rns")
+        and _embedder is not None
+    )
+
+    resultados: list[tuple[float, dict]] = []
 
     for rn_id, rn in _index["rns"].items():
-        score = 0.0
+        # ── Keyword score (original) ──
+        kw_score = 0.0
         texto = rn["descripcion"].lower() + " " + rn_id.lower()
 
         if tema_lower in texto:
-            score += 2.0
+            kw_score += 2.0
         for palabra in tema_lower.split():
             if palabra in texto:
-                score += 1.0
-
-        # Bonus si tiene funciones
+                kw_score += 1.0
         if rn["funciones"]:
-            score += 0.5
+            kw_score += 0.5
 
-        if score > 0:
-            resultados.append((score, rn))
+        if tiene_semantica:
+            # ── Semantic score ──
+            rn_emb = embeddings["rns"].get(rn_id)
+            if rn_emb is not None and _embedder is not None:
+                query_emb = list(_embedder.embed([tema]))[0]
+                sem_score = _cosine_similarity(
+                    [float(x) for x in query_emb],
+                    rn_emb,
+                )
+                sem_score = max(0.0, (sem_score + 1.0) / 2.0)
+                combined = 0.7 * sem_score + 0.3 * min(kw_score / 3.0, 1.0)
+            else:
+                combined = kw_score
+        else:
+            combined = kw_score
+
+        if combined > 0 or kw_score > 0:
+            resultados.append((combined if tiene_semantica else kw_score, rn))
 
     resultados.sort(key=lambda x: -x[0])
     rns_encontradas = [r for _, r in resultados[:10]]
@@ -419,6 +488,7 @@ def tool_buscar_rns_por_tema(tema: str) -> dict[str, Any]:
         "rns": rns_encontradas,
         "count": len(rns_encontradas),
         "tema_busqueda": tema,
+        "busqueda_tipo": "semantica" if tiene_semantica else "keyword",
     }
 
 
@@ -501,7 +571,7 @@ TOOLS = [
     },
     {
         "name": "buscar_por_intencion",
-        "description": "Busca funciones por intención en lenguaje natural. Retorna top 5 con score de similitud. Usa esto cuando no sabés el nombre exacto de la función.",
+        "description": "Busca funciones por intención en lenguaje natural. Si FastEmbed está disponible, usa búsqueda semántica (cosine similarity + keyword). Retorna top 5 con score. Usa esto cuando no sabés el nombre exacto de la función.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -552,7 +622,7 @@ TOOLS = [
     },
     {
         "name": "buscar_rns_por_tema",
-        "description": "Busca RNs por tema o palabra clave. Retorna RNs relevantes con sus funciones. Usa esto para encontrar todas las RNs que hablan de un tema específico.",
+        "description": "Busca RNs por tema o palabra clave. Si FastEmbed está disponible, usa búsqueda semántica combinada con keyword. Retorna RNs relevantes con sus funciones.",
         "inputSchema": {
             "type": "object",
             "properties": {

@@ -3,11 +3,15 @@
 Escanea un proyecto UNA VEZ y genera .docpact/index.json
 con toda la información que las tools MCP necesitan.
 Consultas <5ms en RAM.
+
+Incluye soporte opcional de búsqueda semántica via FastEmbed.
+Si fastembed no está instalado, fallback a keyword-only.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -16,11 +20,113 @@ from docpact.api import extract_contratos
 from docpact.checker.rn_registry import cargar_registro
 
 
-def generar_index(project_root: str | Path) -> dict[str, Any]:
+def _try_load_embedder() -> Any | None:
+    """Intenta cargar TextEmbedding de FastEmbed.
+
+    Returns:
+        TextEmbedding instance o None si fastembed no está instalado.
+    """
+    try:
+        from fastembed import TextEmbedding
+        return TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+    except ImportError:
+        return None
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Calcula similitud coseno entre dos vectores (pure Python, sin numpy).
+
+    Args:
+        a: Primer vector.
+        b: Segundo vector.
+
+    Returns:
+        Similitud coseno entre -1 y 1.
+    """
+    if len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(x * x for x in b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def _generate_embeddings(
+    funciones: dict[str, dict[str, Any]],
+    rns: dict[str, dict[str, Any]],
+    embedder: Any | None = None,
+) -> dict[str, Any] | None:
+    """Genera embeddings para funciones y RNs usando FastEmbed.
+
+    Args:
+        funciones: Índice de funciones.
+        rns: Índice de RNs.
+        embedder: Instancia de TextEmbedding o None.
+
+    Returns:
+        Dict con embeddings serializable o None si embedder es None.
+    """
+    if embedder is None:
+        return None
+
+    # Preparar documentos para funciones
+    func_keys: list[str] = []
+    func_docs: list[str] = []
+    for key, f in funciones.items():
+        parts = [
+            f["funcion"],
+            f["contrato"].get("output_descripcion", "") or "",
+            " ".join(f.get("rn_ids", [])),
+            Path(f["archivo"]).name,
+        ]
+        doc = " ".join(p for p in parts if p)
+        if doc.strip():
+            func_keys.append(key)
+            func_docs.append(doc)
+
+    # Preparar documentos para RNs
+    rn_keys: list[str] = []
+    rn_docs: list[str] = []
+    for rn_id, rn in rns.items():
+        doc = f"{rn_id} {rn['descripcion']}"
+        if doc.strip():
+            rn_keys.append(rn_id)
+            rn_docs.append(doc)
+
+    # Generar embeddings en batch
+    func_embeddings: dict[str, list[float]] = {}
+    if func_docs:
+        vectors = list(embedder.embed(func_docs))
+        for key, vec in zip(func_keys, vectors):
+            func_embeddings[key] = [round(float(x), 6) for x in vec]
+
+    rn_embeddings: dict[str, list[float]] = {}
+    if rn_docs:
+        vectors = list(embedder.embed(rn_docs))
+        for key, vec in zip(rn_keys, vectors):
+            rn_embeddings[key] = [round(float(x), 6) for x in vec]
+
+    return {
+        "model": "BAAI/bge-small-en-v1.5",
+        "dimension": 384,
+        "funciones": func_embeddings,
+        "rns": rn_embeddings,
+    }
+
+
+def generar_index(
+    project_root: str | Path,
+    embedder: Any | None = None,
+) -> dict[str, Any]:
     """Genera el índice completo para el MCP server.
 
     Args:
         project_root: Raíz del proyecto Django/iodesk.
+        embedder: Instancia de TextEmbedding (opcional). Si None, intenta
+                  cargar automáticamente. Si fastembed no está instalado,
+                  se omite la búsqueda semántica.
 
     Returns:
         Dict serializable con todo el índice.
@@ -44,18 +150,25 @@ def generar_index(project_root: str | Path) -> dict[str, Any]:
     rns = _indexar_rns(contratos, registro, tests_por_rn)
     busqueda = _indexar_busqueda(funciones)
 
+    # 6. Generar embeddings (opcional — fallback si FastEmbed no disponible)
+    if embedder is None:
+        embedder = _try_load_embedder()
+    embeddings = _generate_embeddings(funciones, rns, embedder)
+
     return {
-        "version": "1.0",
+        "version": "1.1",
         "project_root": str(root),
         "stats": {
             "total_funciones": len(funciones),
             "funciones_con_rn": sum(1 for f in funciones.values() if f["rn"]),
             "total_rns": len(rns),
             "rns_con_test": sum(1 for r in rns.values() if r["tiene_test"]),
+            "has_embeddings": embeddings is not None,
         },
         "funciones": funciones,
         "rns": rns,
         "busqueda": busqueda,
+        "embeddings": embeddings,
     }
 
 
