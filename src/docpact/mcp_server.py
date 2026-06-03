@@ -107,6 +107,21 @@ def _tool_result(data: Any) -> dict:
     return {"content": [{"type": "text", "text": text}]}
 
 
+def _limpiar_output(output: str) -> str:
+    """Limpia output de pytest para mostrar solo lo relevante."""
+    lineas = output.strip().split("\n")
+    # Quitar warnings y líneas vacías
+    relevantes = [
+        l for l in lineas
+        if l.strip()
+        and not l.startswith("WARNING")
+        and not l.startswith("=")
+        and "hypothesis" not in l.lower()
+        and "warnings summary" not in l.lower()
+    ]
+    return "\n".join(relevantes[-10:])  # Últimas 10 líneas relevantes
+
+
 # ── Tools ──
 
 
@@ -218,24 +233,30 @@ def tool_validar_cambio(archivo: str, diff: str, ejecutar_tests: bool = True) ->
             if rn_info["test"]:
                 tests_a_correr.append(rn_info["test"])
 
-    # Buscar funciones afectadas en el índice
+    # Buscar funciones afectadas en el índice (solo para info, no para tests)
     funcs_afectadas = []
     for key, f in _index["funciones"].items():
         if f["archivo"] == archivo or Path(archivo).name in f["archivo"]:
             funcs_afectadas.append(f)
-            for rn in f["rn"]:
-                if rn["tiene_test"] and rn["test"]:
-                    tests_a_correr.append(rn["test"])
 
-    tests_unicos = list(set(tests_a_correr))
+    # Tests a correr: SOLO los de las RNs que aparecen en el diff
+    tests_rn_especificos = []
+    for rn_id in set(rns_nuevas):
+        rn_info = _index["rns"].get(rn_id)
+        if rn_info and rn_info.get("test"):
+            tests_rn_especificos.append(rn_info["test"])
+
+    tests_unicos = list(set(tests_rn_especificos))
 
     # ═══ ENFORCEMENT: ejecutar tests reales ═══
     # Solo ejecutar tests ESPECÍFICOS de las RNs en el diff,
-    # no todos los tests del archivo (sería lento)
+    # usando filtro -k para no ejecutar tests no relacionados
     if ejecutar_tests and tests_unicos:
         project_root = _index.get("project_root", ".")
+
+        # Agrupar tests por archivo y extraer filtro -k por RN
+        tests_por_archivo: dict[str, set[str]] = {}
         for test_file in tests_unicos:
-            # test_file puede ser absoluto o relativo
             test_path = Path(test_file)
             if not test_path.is_absolute():
                 test_path = Path(project_root) / test_file
@@ -248,30 +269,46 @@ def tool_validar_cambio(archivo: str, diff: str, ejecutar_tests: bool = True) ->
                 })
                 continue
 
-            # Usar path relativo al project_root para pytest
             try:
-                rel_test = test_path.relative_to(project_root)
+                rel_test = str(test_path.relative_to(project_root))
             except ValueError:
-                rel_test = test_path  # fallback a absoluto
+                rel_test = str(test_path)
 
-            # Ejecutar pytest con timeout corto (30s por test)
+            tests_por_archivo.setdefault(rel_test, set())
+
+        # Extraer keywords de las RNs para filtro -k
+        rn_keywords = []
+        for rn_id in rns_nuevas:
+            # RN-CL-001 → CL001, RN-TKT-003 → TKT003
+            clean = rn_id.upper().replace("RN-", "").replace("-", "")
+            rn_keywords.append(clean)
+
+        # Construir filtro -k
+        k_filter = " or ".join(rn_keywords) if rn_keywords else None
+
+        for test_file_rel in tests_por_archivo:
+            cmd = [
+                sys.executable, "-m", "pytest",
+                test_file_rel,
+                "-q", "--no-header", "--tb=short",
+                "-p", "no:cacheprovider",
+                "-n", "0",  # Sin parallel para tests rápidos
+            ]
+            if k_filter:
+                cmd.extend(["-k", k_filter])
+
             try:
                 result = subprocess.run(
-                    [
-                        sys.executable, "-m", "pytest",
-                        str(rel_test),
-                        "-q", "--no-header", "--tb=short",
-                        "-p", "no:cacheprovider",
-                    ],
+                    cmd,
                     capture_output=True,
                     text=True,
-                    timeout=35,
+                    timeout=30,
                     cwd=project_root,
                     env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
                 )
                 passed = result.returncode == 0
                 test_results.append({
-                    "test": test_file,
+                    "test": test_file_rel,
                     "status": "PASS" if passed else "FAIL",
                     "output": result.stdout[-500:] if not passed else "",
                     "returncode": result.returncode,
@@ -279,23 +316,24 @@ def tool_validar_cambio(archivo: str, diff: str, ejecutar_tests: bool = True) ->
                 if not passed:
                     errores.append({
                         "tipo": "test_fallido",
-                        "test": test_file,
-                        "mensaje": f"Test {test_file} FALLÓ",
+                        "test": test_file_rel,
+                        "mensaje": f"Test {test_file_rel} FALLÓ",
+                        "output_limpio": _limpiar_output(result.stdout),
                     })
             except subprocess.TimeoutExpired:
                 test_results.append({
-                    "test": test_file,
+                    "test": test_file_rel,
                     "status": "TIMEOUT",
-                    "razon": "Test excedió 35s",
+                    "razon": "Test excedió 30s",
                 })
                 errores.append({
                     "tipo": "test_timeout",
-                    "test": test_file,
-                    "mensaje": f"Test {test_file} excedió timeout",
+                    "test": test_file_rel,
+                    "mensaje": f"Test {test_file_rel} excedió timeout",
                 })
             except Exception as e:
                 test_results.append({
-                    "test": test_file,
+                    "test": test_file_rel,
                     "status": "ERROR",
                     "razon": str(e),
                 })
