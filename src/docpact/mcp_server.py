@@ -33,9 +33,34 @@ _index: dict[str, Any] | None = None
 _project_root: str | None = None
 
 
-def _cargar_o_generar_index(project_root: str) -> dict[str, Any]:
-    """Carga índice existente o genera uno nuevo."""
+def _cargar_o_generar_index(project_root: str, force: bool = False) -> dict[str, Any]:
+    """Carga índice existente o genera uno nuevo.
+
+    Auto-regenera si el índice está obsoleto (más viejo que un .py modificado).
+    """
     global _index, _project_root
+
+    index_path = Path(project_root) / ".docpact" / "index.json"
+
+    if not force and index_path.exists():
+        index_mtime = index_path.stat().st_mtime
+
+        # Buscar el .py más reciente del proyecto
+        root = Path(project_root)
+        latest_py = max(
+            (f.stat().st_mtime for f in root.rglob("*.py")
+             if not any(p in f.parts for p in ["__pycache__", ".venv", "venv", "node_modules", ".git", "migrations"])),
+            default=0,
+        )
+
+        # Si el índice es más viejo que el .py más reciente, regenerar
+        if latest_py > index_mtime:
+            logger.info("Índice obsoleto, regenerando...")
+            index = generar_index(project_root)
+            guardar_index(index, project_root)
+            _index = index
+            _project_root = project_root
+            return index
 
     # Intentar cargar existente
     index = cargar_index(project_root)
@@ -565,7 +590,8 @@ def main() -> int:
                     or os.environ.get("DOCPACT_PROJECT_ROOT")
                     or "."
                 )
-                _cargar_o_generar_index(project_root)
+                force = params.get("force", False)
+                _cargar_o_generar_index(project_root, force=force)
 
                 _responder(
                     req_id,
