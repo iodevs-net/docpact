@@ -223,12 +223,14 @@ def tool_validar_cambio(archivo: str, diff: str, ejecutar_tests: bool = True) ->
                 "tipo": "rn_fake",
                 "rn": rn_id,
                 "mensaje": f"RN '{rn_id}' no existe en REGISTRO.md",
+                "accion": f"Quita '{rn_id}' del CONTRATO o agrégala a docs/reglas-del-negocio/REGISTRO.md",
             })
         elif not rn_info["tiene_test"]:
             warnings.append({
                 "tipo": "rn_sin_test",
                 "rn": rn_id,
                 "mensaje": f"RN '{rn_id}' no tiene test file",
+                "accion": f"Crea tests/rn/test_rn_{rn_id.replace('RN-', '')}.py con Hypothesis PBT",
             })
             if rn_info["test"]:
                 tests_a_correr.append(rn_info["test"])
@@ -317,8 +319,9 @@ def tool_validar_cambio(archivo: str, diff: str, ejecutar_tests: bool = True) ->
                     errores.append({
                         "tipo": "test_fallido",
                         "test": test_file_rel,
-                        "mensaje": f"Test {test_file_rel} FALLÓ",
+                        "mensaje": f"Test {test_file_rel} FALLÓ — tu cambio rompió el comportamiento existente",
                         "output_limpio": _limpiar_output(result.stdout),
+                        "accion": f"Lee el output del test y corrige tu código para que pase. El test verifica una RN real.",
                     })
             except subprocess.TimeoutExpired:
                 test_results.append({
@@ -329,7 +332,8 @@ def tool_validar_cambio(archivo: str, diff: str, ejecutar_tests: bool = True) ->
                 errores.append({
                     "tipo": "test_timeout",
                     "test": test_file_rel,
-                    "mensaje": f"Test {test_file_rel} excedió timeout",
+                    "mensaje": f"Test {test_file_rel} excedió timeout — posible loop infinito o query lenta",
+                    "accion": "Revisa tu código para asegurar que no hay queries N+1 o loops infinitos",
                 })
             except Exception as e:
                 test_results.append({
@@ -338,6 +342,13 @@ def tool_validar_cambio(archivo: str, diff: str, ejecutar_tests: bool = True) ->
                     "razon": str(e),
                 })
 
+    # Construir resumen accionable
+    if errores:
+        acciones = [e.get("accion", e["mensaje"]) for e in errores]
+        resumen = f"BLOQUEADO: {len(errores)} error(es). Acciones:\n" + "\n".join(f"  {i+1}. {a}" for i, a in enumerate(acciones))
+    else:
+        resumen = "APROBADO: cambio válido, podés commitar"
+
     return {
         "valido": len(errores) == 0,
         "errores": errores,
@@ -345,6 +356,7 @@ def tool_validar_cambio(archivo: str, diff: str, ejecutar_tests: bool = True) ->
         "funcs_en_archivo": len(funcs_afectadas),
         "tests_a_correr": tests_unicos,
         "test_results": test_results,
+        "resumen": resumen,
     }
 
 
