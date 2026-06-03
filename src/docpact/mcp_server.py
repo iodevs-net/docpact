@@ -154,22 +154,24 @@ def tool_buscar_por_intencion(intencion: str) -> dict[str, Any]:
     }
 
 
-def tool_validar_cambio(archivo: str, diff: str) -> dict[str, Any]:
-    """Tool 3: Validar un cambio antes de commit.
+def tool_validar_cambio(archivo: str, diff: str, ejecutar_tests: bool = True) -> dict[str, Any]:
+    """Tool 3: Validar un cambio antes de commit — ENFORCEMENT.
 
-    Analiza el diff y verifica:
-    - RNs declaradas existen en REGISTRO
-    - No se rompió el CONTRATO existente
-    - Tests relevantes existen
+    Analiza el diff Y ejecuta tests relevantes.
+    Si algún test falla, el cambio es INVÁLIDO.
+    El agente NO puede commitar hasta que todo pase.
     """
     if _index is None:
         return {"error": "Índice no cargado"}
 
     import re
+    import subprocess
+    import os
 
     errores = []
     warnings = []
     tests_a_correr = []
+    test_results = []
 
     # Buscar RNs nuevas en el diff
     rns_nuevas = re.findall(r"RN-[\w-]+", diff)
@@ -200,12 +202,86 @@ def tool_validar_cambio(archivo: str, diff: str) -> dict[str, Any]:
                 if rn["tiene_test"] and rn["test"]:
                     tests_a_correr.append(rn["test"])
 
+    tests_unicos = list(set(tests_a_correr))
+
+    # ═══ ENFORCEMENT: ejecutar tests reales ═══
+    # Solo ejecutar tests ESPECÍFICOS de las RNs en el diff,
+    # no todos los tests del archivo (sería lento)
+    if ejecutar_tests and tests_unicos:
+        project_root = _index.get("project_root", ".")
+        for test_file in tests_unicos:
+            # test_file puede ser absoluto o relativo
+            test_path = Path(test_file)
+            if not test_path.is_absolute():
+                test_path = Path(project_root) / test_file
+
+            if not test_path.exists():
+                test_results.append({
+                    "test": test_file,
+                    "status": "SKIP",
+                    "razon": "Archivo de test no encontrado",
+                })
+                continue
+
+            # Usar path relativo al project_root para pytest
+            try:
+                rel_test = test_path.relative_to(project_root)
+            except ValueError:
+                rel_test = test_path  # fallback a absoluto
+
+            # Ejecutar pytest con timeout corto (30s por test)
+            try:
+                result = subprocess.run(
+                    [
+                        sys.executable, "-m", "pytest",
+                        str(rel_test),
+                        "-q", "--no-header", "--tb=short",
+                        "-p", "no:cacheprovider",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=35,
+                    cwd=project_root,
+                    env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+                )
+                passed = result.returncode == 0
+                test_results.append({
+                    "test": test_file,
+                    "status": "PASS" if passed else "FAIL",
+                    "output": result.stdout[-500:] if not passed else "",
+                    "returncode": result.returncode,
+                })
+                if not passed:
+                    errores.append({
+                        "tipo": "test_fallido",
+                        "test": test_file,
+                        "mensaje": f"Test {test_file} FALLÓ",
+                    })
+            except subprocess.TimeoutExpired:
+                test_results.append({
+                    "test": test_file,
+                    "status": "TIMEOUT",
+                    "razon": "Test excedió 35s",
+                })
+                errores.append({
+                    "tipo": "test_timeout",
+                    "test": test_file,
+                    "mensaje": f"Test {test_file} excedió timeout",
+                })
+            except Exception as e:
+                test_results.append({
+                    "test": test_file,
+                    "status": "ERROR",
+                    "razon": str(e),
+                })
+
     return {
         "valido": len(errores) == 0,
         "errores": errores,
         "warnings": warnings,
         "funcs_en_archivo": len(funcs_afectadas),
-        "tests_a_correr": list(set(tests_a_correr)),
+        "tests_a_correr": tests_unicos,
+        "test_results": test_results,
     }
 
 
@@ -364,7 +440,7 @@ TOOLS = [
     },
     {
         "name": "validar_cambio",
-        "description": "Valida un diff antes de commit. Verifica que las RNs declaradas existan, no se haya roto el CONTRATO, y existan tests. Usa esto DESPUÉS de escribir código.",
+        "description": "Valida un diff Y ejecuta tests relevantes antes de commit. Si algún test falla, el cambio es INVÁLIDO. El agente NO puede commitar hasta que todo pase. Esto es ENFORCEMENT, no solo verificación.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -375,6 +451,11 @@ TOOLS = [
                 "diff": {
                     "type": "string",
                     "description": "El diff o las líneas añadidas/eliminadas",
+                },
+                "ejecutar_tests": {
+                    "type": "boolean",
+                    "description": "Si True (default), ejecuta los tests relevantes. Si False, solo verifica existencia de RNs.",
+                    "default": True,
                 },
             },
             "required": ["archivo", "diff"],
@@ -435,7 +516,9 @@ def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
             args.get("intencion", "")
         ),
         "validar_cambio": lambda: tool_validar_cambio(
-            args.get("archivo", ""), args.get("diff", "")
+            args.get("archivo", ""),
+            args.get("diff", ""),
+            ejecutar_tests=args.get("ejecutar_tests", True),
         ),
         "obtener_rn": lambda: tool_obtener_rn(args.get("rn_id", "")),
         "buscar_rns_por_tema": lambda: tool_buscar_rns_por_tema(
