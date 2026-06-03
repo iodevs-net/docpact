@@ -155,9 +155,26 @@ def main(argv: list[str] | None = None) -> int:
         help="Ruta al archivo de configuración docpact.toml",
     )
 
+    # ├─ index — genera índice pre-calculado para MCP
+    index_parser = subparsers.add_parser(
+        "index", help="Genera índice pre-calculado para el MCP server"
+    )
+    index_parser.add_argument(
+        "path", type=str, nargs="?", default=".",
+        help="Raíz del proyecto (default: directorio actual)",
+    )
+    index_parser.add_argument(
+        "--force", action="store_true",
+        help="Regenerar índice aunque ya exista",
+    )
+
     # ├─ mcp
     mcp_parser = subparsers.add_parser(
         "mcp", help="Inicia el MCP server para agentes (JSON-RPC sobre stdio)"
+    )
+    mcp_parser.add_argument(
+        "--project-root", type=str, default=".",
+        help="Raíz del proyecto (default: directorio actual)",
     )
 
     # ├─ init  (Fase 4 — placeholder)
@@ -230,6 +247,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_init(args)
     elif args.command == "run":
         return _cmd_run(args)
+    elif args.command == "index":
+        return _cmd_index(args)
     elif args.command == "mcp":
         return _cmd_mcp(args)
     elif args.command == "doctor":
@@ -856,9 +875,41 @@ def _cmd_fix(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_index(args: argparse.Namespace) -> int:
+    """Comando index: genera índice pre-calculado para el MCP server."""
+    from docpact.index import generar_index, guardar_index
+    import os
+
+    project_root = os.path.abspath(args.path)
+    index_path = Path(project_root) / ".docpact" / "index.json"
+
+    if index_path.exists() and not args.force:
+        print(f"ℹ️  Índice ya existe: {index_path}")
+        print("   Usa --force para regenerar")
+        return 0
+
+    print(f"🔍 Escaneando {project_root}...")
+    index = generar_index(project_root)
+    path = guardar_index(index, project_root)
+
+    stats = index["stats"]
+    print(f"✅ Índice generado: {path}")
+    print(f"   Funciones: {stats['total_funciones']}")
+    print(f"   Con RNs: {stats['funciones_con_rn']}")
+    print(f"   RNs: {stats['total_rns']}")
+    print(f"   RNs con test: {stats['rns_con_test']}")
+    print(f"   Tamaño: {os.path.getsize(path)/1024:.1f} KB")
+    return 0
+
+
 def _cmd_mcp(args: argparse.Namespace) -> int:
     """Comando mcp: inicia el MCP server para agentes."""
     from docpact.mcp_server import main as mcp_main
+    import os
+
+    # Si se pasa --project-root, inyectar como variable de entorno
+    if args.project_root:
+        os.environ["DOCPACT_PROJECT_ROOT"] = os.path.abspath(args.project_root)
 
     return mcp_main()
 
