@@ -11,7 +11,6 @@ Heuristica (v1):
 - no_import       → asume dice "delegado" o "no inline"
 - required_groups → asume menciona "grupo" o "permiso"
 - has_pattern     → fallback (chequeo basico de substring)
-
 El output es una SUGERENCIA. El usuario debe revisarla antes de aplicar.
 """
 from __future__ import annotations
@@ -19,7 +18,14 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from docpact.models.contrato import Contrato
+from docpact.models.contrato import (
+    CampoInput,
+    CasoBorde,
+    Contrato,
+    Dependencia,
+    ReglaNegocio,
+    SideEffect,
+)
 
 
 # ──────────────────── inferir_tipo_validador ────────────────────
@@ -189,3 +195,46 @@ def sugerir_spec_para_contrato(c: Contrato) -> dict:
         "spec": spec,
         "bloque_toml": bloque,
     }
+def contrato_desde_dict(d: dict) -> Contrato:
+    """Adapta dict de extract_contratos a dataclass Contrato."""
+    inputs_raw = d.get("input", {})
+    inputs: dict = {}
+    for k, v in inputs_raw.items():
+        if isinstance(v, dict):
+            inputs[k] = CampoInput(
+                nombre=v.get("nombre", k),
+                tipo=v.get("tipo", ""),
+                descripcion=v.get("descripcion", ""),
+            )
+        else:
+            inputs[k] = CampoInput(nombre=k, tipo=str(v), descripcion="")
+    sides: list = []
+    for s in d.get("side_effects", []):
+        if isinstance(s, dict):
+            sides.append(SideEffect(descripcion=s.get("descripcion", "")))
+        else:
+            sides.append(SideEffect(descripcion=str(s)))
+    rns = [
+        ReglaNegocio(id=r.get("id", ""), descripcion=r.get("descripcion", ""))
+        for r in d.get("rn", []) if isinstance(r, dict)
+    ]
+    bordes = [
+        CasoBorde(condicion=b.get("condicion", ""), comportamiento=b.get("comportamiento", ""))
+        for b in d.get("borde", []) if isinstance(b, dict)
+    ]
+    deps = [
+        Dependencia(ref=p.get("ref", ""))
+        for p in d.get("dependencias", []) if isinstance(p, dict)
+    ]
+    return Contrato(
+        input=inputs,
+        output=d.get("output"),
+        output_descripcion=d.get("output_descripcion", "") or "",
+        side_effects=sides,
+        rn=rns,
+        borde=bordes,
+        dependencias=deps,
+        comportamiento=d.get("comportamiento"),
+        asume=d.get("asume"),
+        produce=d.get("produce"),
+    )

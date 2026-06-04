@@ -1162,8 +1162,11 @@ def _cmd_config_suggest(args: argparse.Namespace) -> int:
     """Sugiere config TOML para RNs sin validador. Sale 0 si OK, 1 si falla."""
     from pathlib import Path as _P
     import json as _json
-    from docpact.config_suggest import sugerir_spec_para_contrato
-    from docpact.extractor import extract_contratos
+    from docpact.api import extract_contratos
+    from docpact.config_suggest import (
+        contrato_desde_dict,
+        sugerir_spec_para_contrato,
+    )
 
     root = _P(args.project_root).resolve()
     if not root.exists():
@@ -1173,9 +1176,10 @@ def _cmd_config_suggest(args: argparse.Namespace) -> int:
     contratos = extract_contratos(root)
     sugerencias: list[dict] = []
     for c in contratos:
-        if not c.contrato.rn:
+        contrato = contrato_desde_dict(c.get("contrato", {}))
+        if not contrato.rn:
             continue
-        sug = sugerir_spec_para_contrato(c.contrato)
+        sug = sugerir_spec_para_contrato(contrato)
         if sug["confidence"] >= args.min_confidence:
             sugerencias.append(sug)
 
