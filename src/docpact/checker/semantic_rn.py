@@ -176,7 +176,14 @@ def _validar_state_transition(
             )
         ]
 
-    transiciones = matriz.get(from_estado, [])
+    # Normalizar keys a lowercase: en runtime `EstadoTicket.ATENDER == "atender"`,
+    # pero a nivel AST solo tenemos el nombre del atributo ("ATENDER"). Comparamos
+    # ambos lados en lowercase para que el spec (`from_estado = "atender"`)
+    # coincida con la key real del dict.
+    matriz_lower = {k.lower(): v for k, v in matriz.items()}
+    from_estado_lower = from_estado.lower()
+
+    transiciones = matriz_lower.get(from_estado_lower, [])
     if not transiciones:
         return [
             ErrorParser(
@@ -187,10 +194,15 @@ def _validar_state_transition(
         ]
 
     destinos_esperados = [to_estado] if to_estado else to_cualquiera
-    destinos_match = [d for d in destinos_esperados if d in transiciones]
+    destinos_lower = {d.lower() for d in transiciones}
+    destinos_match = [d for d in destinos_esperados if d.lower() in destinos_lower]
 
     if not destinos_match:
-        destinos_str = ", ".join(transiciones) if isinstance(transiciones, list) else str(transiciones)
+        destinos_str = (
+            ", ".join(transiciones)
+            if isinstance(transiciones, list)
+            else str(transiciones)
+        )
         return [
             ErrorParser(
                 "rn_semantica",
@@ -204,42 +216,88 @@ def _validar_state_transition(
 
 
 def _extraer_dict_ast(tree: ast.AST, nombre: str) -> dict | None:
-    """Extrae un dict literal asignado a `nombre` a nivel de módulo."""
+    """Extrae un dict literal asignado a `nombre` a nivel de módulo.
+
+    Soporta tanto `=` (ast.Assign) como asignación anotada `: T = ...`
+    (ast.AnnAssign), p.ej. `M: dict[str, list[str]] = {...}`.
+    """
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 if isinstance(target, ast.Name) and target.id == nombre:
                     if isinstance(node.value, ast.Dict):
                         return _dict_literal_a_python(node.value)
+        elif isinstance(node, ast.AnnAssign):
+            if (
+                isinstance(node.target, ast.Name)
+                and node.target.id == nombre
+                and isinstance(node.value, ast.Dict)
+            ):
+                return _dict_literal_a_python(node.value)
     return None
 
 
 def _dict_literal_a_python(node: ast.Dict) -> dict:
-    """Convierte un ast.Dict con keys/values string o Name a dict Python."""
+    """Convierte un ast.Dict con keys/values a dict Python.
+
+    Soporta keys/values que sean string literal (`"x"`), Name (`Foo`) o
+    Attribute (`Mod.X`). Para Attribute, devuelve el último segmento (`X`),
+    que es el patrón típico de `Constante.ATENDER` donde la constante es
+    un string que coincide con su nombre.
+
+    Los valores que sean listas concatenadas con `+` (ast.BinOp(Add)) se
+    aplanan recursivamente para resolver el patrón común `[...] + OTRA_LISTA`.
+    """
     resultado: dict = {}
     for key, value in zip(node.keys, node.values):
-        if isinstance(key, ast.Constant) and isinstance(key.value, str):
-            k = key.value
-        elif isinstance(key, ast.Name):
-            k = key.id
-        else:
+        k = _extract_str_or_name(key)
+        if k is None:
             continue
-        if isinstance(value, ast.List):
-            resultado[k] = [_constant_str_or_name(e) for e in value.elts]
-        else:
-            resultado[k] = []
+        resultado[k] = _flatten_list(value)
     return resultado
 
 
-def _constant_str_or_name(node: ast.AST) -> str:
-    """Extrae string de Constant o Name.id."""
+def _flatten_list(node: ast.AST) -> list[str]:
+    """Extrae strings de una lista, incluyendo concatenaciones `lst1 + lst2 + ...`.
+
+    Si el nodo no es representable como lista de strings, devuelve [].
+    """
+    elts = _flatten_binop(node)
+    resultado: list[str] = []
+    for e in elts:
+        s = _extract_str_or_name(e)
+        if s is not None:
+            resultado.append(s)
+    return resultado
+
+
+def _flatten_binop(node: ast.AST) -> list[ast.AST]:
+    """Aplana un `ast.BinOp(Add)` en una lista de nodos hoja.
+
+    `a + b + c` se representa como `BinOp(BinOp(a, b), c)`. Esta función
+    lo aplana a `[a, b, c]`. Cualquier nodo que no sea lista ni BinOp
+    se devuelve como una lista de un solo elemento.
+    """
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        return _flatten_binop(node.left) + _flatten_binop(node.right)
+    if isinstance(node, ast.List):
+        return list(node.elts)
+    return [node]
+
+
+def _extract_str_or_name(node: ast.AST) -> str | None:
+    """Extrae string de Constant, Name.id, o último segmento de Attribute.
+
+    Devuelve None si el nodo no es representable como string simple (ej:
+    llamadas a función, expresiones complejas).
+    """
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
-        return ast.unparse(node)
-    return ast.unparse(node)
+        return node.attr
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────
