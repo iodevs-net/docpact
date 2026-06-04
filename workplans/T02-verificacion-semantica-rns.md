@@ -64,6 +64,45 @@ Cambios:
 - Proyectos que no hayan migrado: sus RNs no se validan, con un
   `warning` final de migración vencida.
 
+**Gaps conocidos a resolver en Fase C**:
+- `state_transition` no resuelve variables en `+ _VAR` (solo flatten BinOp).
+  Patrón `EstadoTicket.ATENDER: [...] + _ESTADOS_CON_SALIDA_SUSPENDER_RESOLVER`
+  muestra `_ESTADOS_CON_SALIDA_SUSPENDER_RESOLVER` como token literal.
+  Fix: leer módulo, resolver Name lookups, sustituir antes de validar.
+- Auditoría de ioDesk-3 confirmó: RN-004/005/006 funcionan para checks
+  directos (no requieren variable resolution), pero listados completos
+  necesitan Fase C.
+
+---
+
+### ✅ Release N — Fase A.5 (2026-06-03)
+
+**Objetivo**: hacer `state_transition` funcional contra código real (no
+solo ejemplos sintéticos del test suite).
+
+**Gaps atacados** (descubiertos al aplicar Fase A en ioDesk-3):
+
+1. **`ast.Attribute` como key** — el código real usa `EstadoTicket.ATENDER`,
+   no strings. `_dict_literal_a_python` los skipeaba. Fix: extraer
+   `node.attr` (último segmento del Attribute).
+2. **`ast.AnnAssign`** — el código real usa anotación de tipo:
+   `TRANSICIONES_PERMITIDAS: dict[str, list[str]] = {...}`. Eso es
+   `ast.AnnAssign`, no `ast.Assign`. Fix: soportar ambos.
+3. **`ast.BinOp(Add)` para listas concatenadas** — el código real
+   concatena con `+ _ESTADOS_CON_SALIDA_SUSPENDER_RESOLVER`. Fix: aplanar
+   recursivamente el BinOp.
+4. **Normalización lowercase** — `EstadoTicket.ATENDER` tiene atributo
+   `"ATENDER"` (mayúscula), pero el spec del usuario es `"atender"`
+   (lowercase, el valor real de la constante en runtime). Fix: lowercase
+   en la comparación.
+
+**Limitación documentada**: variables referenciadas (`+ _VAR`) no se
+resuelven a nivel AST — queda como gap de Fase C.
+
+**Impacto**: `state_transition` ahora valida correctamente contra la
+matriz `TRANSICIONES_PERMITIDAS` de ioDesk-3 para transiciones directas.
+3 tests nuevos (25/25 verde, 0 regresiones).
+
 ---
 
 ## Validadores canónicos (Fase A)
