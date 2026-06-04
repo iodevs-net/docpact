@@ -802,6 +802,9 @@ def _procesar_funcion(
             )
 
     # RN check — usa la fuente original para extraer comentarios
+    # T02 Fase A: marker check se mantiene activo, pero como warning [LEGACY].
+    # En la Fase C (próximo release) será eliminado. Los agentes deben migrar
+    # a validadores semánticos configurando [docpact.rn_patrones] en docpact.toml.
     rn_errores = _check_rn_con_fuente(node, contrato, fuente, config.rn_prefix, nombre)
     for rn in rn_errores:
         hallazgos.append(
@@ -811,8 +814,12 @@ def _procesar_funcion(
                 funcion=nombre,
                 archivo=archivo,
                 linea=rn.linea or node.lineno,
-                mensaje=rn.mensaje,
-                sugerencia=rn.sugerencia,
+                mensaje=f"[LEGACY] {rn.mensaje}",
+                sugerencia=(
+                    f"{rn.sugerencia} | T02: configura un validador semántico en "
+                    f"docpact.toml [docpact.rn_patrones] con 'type' para validar "
+                    f"la regla de verdad."
+                ),
             )
         )
 
@@ -855,29 +862,116 @@ def _procesar_funcion(
             )
         )
 
-    # RN patterns — verifica logica real si hay rn_patrones configurados
-    if config.rn_patrones and archivo and contrato.rn:
-        from pathlib import Path as _P
-        from docpact.checker.rn_patterns import verificar_rn_patrones
-
-        _errores_patron = verificar_rn_patrones(
-            _P(archivo),
-            codigo_funcion,
-            config.rn_patrones,
-            line_offset=node.lineno,
-        )
-        for ep in _errores_patron:
+    # T02 Fase A: dispatch a validadores semánticos. Cada RN declarada en
+    # CONTRATO se valida ejecutando el validador configurado en
+    # [docpact.rn_patrones] de docpact.toml. Los errores semánticos son
+    # errores REALES (no markers), porque el código se lee y la regla
+    # se valida estructuralmente.
+    #
+    # Si NO hay rn_patrones configurados pero el CONTRATO declara RNs,
+    # emitimos info para guiar al agente a configurar validadores.
+    #
+    # Backward compat: si un spec NO tiene clave 'type', se asume
+    # has_pattern (compat con el viejo verificar_rn_patrones).
+    if archivo and contrato.rn and not config.rn_patrones:
+        # Sin validadores configurados: avisar al agente
+        for rn in contrato.rn:
             hallazgos.append(
                 Hallazgo(
-                    tipo="warning",
+                    tipo="info",
                     campo="rn",
                     funcion=nombre,
                     archivo=archivo,
-                    linea=ep.linea,
-                    mensaje=ep.mensaje,
-                    sugerencia=ep.sugerencia,
+                    linea=node.lineno,
+                    mensaje=(
+                        f"RN {rn.id} declarada pero sin validador semántico "
+                        f"configurado en docpact.toml"
+                    ),
+                    sugerencia=(
+                        f"Agrega [docpact.rn_patrones] '{rn.id}' = "
+                        f"{{ type = '...', ... }} en docpact.toml. "
+                        f"Tipos: state_transition, no_import, required_groups, "
+                        f"tenant_safe, has_pattern."
+                    ),
                 )
             )
+    elif config.rn_patrones and archivo and contrato.rn:
+        from docpact.checker.semantic_rn import validar_rn
+        from docpact.checker.rn_patterns import verificar_rn_patrones
+
+        # Resolver proyecto_root una sola vez para validadores que lo necesitan
+        proyecto_root = _find_project_root(archivo)
+        contexto_base = {
+            "archivo": archivo,
+            "proyecto_root": str(proyecto_root) if proyecto_root else None,
+        }
+
+        for rn in contrato.rn:
+            spec = config.rn_patrones.get(rn.id)
+            if not spec:
+                # RN declarada en CONTRATO pero sin validador configurado.
+                # Emitir info para que el agente sepa que debe configurar uno.
+                hallazgos.append(
+                    Hallazgo(
+                        tipo="info",
+                        campo="rn",
+                        funcion=nombre,
+                        archivo=archivo,
+                        linea=node.lineno,
+                        mensaje=(
+                            f"RN {rn.id} declarada pero sin validador "
+                            f"semántico configurado en docpact.toml"
+                        ),
+                        sugerencia=(
+                            f"Agrega [docpact.rn_patrones] '{rn.id}' = "
+                            f"{{ type = '...', ... }} en docpact.toml. "
+                            f"Tipos: state_transition, no_import, required_groups, "
+                            f"tenant_safe, has_pattern."
+                        ),
+                    )
+                )
+                continue
+
+            # Si el spec no tiene 'type', fallback al comportamiento legacy (has_pattern)
+            if "type" not in spec:
+                _errores_legacy = verificar_rn_patrones(
+                    Path(archivo),
+                    codigo_funcion,
+                    {rn.id: spec},
+                    line_offset=node.lineno,
+                )
+                for ep in _errores_legacy:
+                    hallazgos.append(
+                        Hallazgo(
+                            tipo="warning",
+                            campo="rn",
+                            funcion=nombre,
+                            archivo=archivo,
+                            linea=ep.linea,
+                            mensaje=f"[LEGACY has_pattern] {ep.mensaje}",
+                            sugerencia=(
+                                f"{ep.sugerencia} | T02: agrega 'type' al spec "
+                                f"para migrar a validación semántica."
+                            ),
+                        )
+                    )
+                continue
+
+            # Dispatcher semántico
+            contexto = {**contexto_base, "line_offset": node.lineno}
+            errores_sem = validar_rn(codigo_funcion, rn.id, spec, contexto)
+            for es in errores_sem:
+                hallazgos.append(
+                    Hallazgo(
+                        tipo="error",  # T02 Fase A: errores semánticos son errores reales
+                        campo="rn_semantica",
+                        funcion=nombre,
+                        archivo=archivo,
+                        linea=es.linea or node.lineno,
+                        mensaje=es.mensaje,
+                        sugerencia=es.sugerencia,
+                    )
+                )
 
     # RN registry check
     from pathlib import Path as _Path
