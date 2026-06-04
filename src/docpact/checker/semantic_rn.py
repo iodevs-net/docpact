@@ -459,7 +459,7 @@ def _validar_tenant_safe(
     escapes inseguros. Es heurístico — el agente debe declarar
     explícitamente cuándo un escape es legítimo.
     """
-    forbid = spec.get("forbid", ["unfiltered_objects"])
+    forbid = spec.get("forbid", ["unfiltered_objects", ".objects.all", ".objects.filter"])
     errores: list[ErrorParser] = []
 
     try:
