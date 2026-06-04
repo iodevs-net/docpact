@@ -88,7 +88,7 @@ class DocpactConfig:
                 for p in patrones:
                     if p.startswith("."):
                         # Evitar falsos positivos como updated_at coincidiendo con .update
-                        compiled.append(re.compile(r'\.' + re.escape(p[1:]) + r'\b'))
+                        compiled.append(re.compile(r"\." + re.escape(p[1:]) + r"\b"))
                     else:
                         compiled.append(re.compile(re.escape(p)))
                 self._patrones_compilados[categoria] = compiled
@@ -151,7 +151,8 @@ class DocpactConfig:
         rn_cfg = docpact_cfg.get("rn_patrones", {})
         rn_patrones = {}
         for rn_id, cfg in rn_cfg.items():
-            if isinstance(cfg, dict) and "patron" in cfg:
+            # Acepta specs legacy (con 'patron') y semánticos (con 'type').
+            if isinstance(cfg, dict) and ("patron" in cfg or "type" in cfg):
                 rn_patrones[rn_id] = cfg
 
         # Types allowlist: tipos que nunca deben generar warning
