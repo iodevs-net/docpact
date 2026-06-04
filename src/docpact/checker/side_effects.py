@@ -50,19 +50,26 @@ def check_side_effects(
             )
         )
 
-    # Caso 2: declaró efectos pero NO se encontró NINGUNA categoría
-    # (descripciones en español vs categorías técnicas son incomparables)
-    # Solo advertir si hay 0 efectos encontrados siendo que se declararon
+    # Caso 2: declaró efectos pero NO se encontró NINGUNA categoría.
+    # FIX (Mejora #4): si la funcion tiene method calls (ast.Call con ast.Attribute),
+    # es un delegator que pasa el control a un service — NO warning.
+    # Solo advertir si hay 0 efectos Y no hay method calls (codigo que declara
+    # efectos pero no hace nada visible — eso si es bug).
     if efectos_declarados and not efectos_encontrados:
-        errores.append(
-            ErrorParser(
-                "side_effects",
-                f"'{nombre_funcion}': declaró side_effects pero no se "
-                f"detectaron llamadas con patrones conocidos",
-                sugerencia="Si la función delega a otros servicios, está bien. "
-                "Agrega patrones personalizados en docpact.toml si quieres tracking fino.",
-            )
+        es_delegator = any(
+            isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+            for n in ast.walk(node)
         )
+        if not es_delegator:
+            errores.append(
+                ErrorParser(
+                    "side_effects",
+                    f"'{nombre_funcion}': declaró side_effects pero no se "
+                    f"detectaron llamadas con patrones conocidos",
+                    sugerencia="Si la función delega a otros servicios, está bien. "
+                    "Agrega patrones personalizados en docpact.toml si quieres tracking fino.",
+                )
+            )
 
     return errores
 
