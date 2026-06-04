@@ -264,6 +264,22 @@ def main(argv: list[str] | None = None) -> int:
         "--json", action="store_true",
         help="Output estructurado en JSON",
     )
+
+    # ├─ llm-judge
+    llm_judge_parser = subparsers.add_parser(
+        "llm-judge",
+        help="Evalua si un test verifica la regla usando un LLM (OpenAI-compatible)",
+    )
+    llm_judge_parser.add_argument(
+        "test_file", type=str, help="Path al archivo de test (.py)"
+    )
+    llm_judge_parser.add_argument(
+        "--rn-descripcion", type=str, required=True,
+        help="Descripcion de la regla de negocio que el test deberia verificar",
+    )
+    llm_judge_parser.add_argument(
+        "--json", action="store_true", help="Output estructurado en JSON",
+    )
     # ├─ init  (Fase 4 — placeholder)
     init_parser = subparsers.add_parser(
         "init", help="Genera esqueletos de CONTRATO para funciones sin contrato"
@@ -352,6 +368,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_doctor(args)
     elif args.command == "fix":
         return _cmd_fix(args)
+    elif args.command == "llm-judge":
+        return _cmd_llm_judge(args)
     else:
         parser.print_help()
         return 0
@@ -1218,6 +1236,39 @@ def _cmd_config_suggest(args: argparse.Namespace) -> int:
         print(f"\n✅ {len(sugerencias)} bloques escritos a {config_path}")
 
     return 0
+
+def _cmd_llm_judge(args: argparse.Namespace) -> int:
+    """Evalua si un test verifica la regla usando un LLM."""
+    import json as _json
+    from pathlib import Path as _P
+    from docpact.llm_judge import evaluar_test_con_llm
+
+    test_path = _P(args.test_file)
+    if not test_path.exists():
+        print(f"❌ test file no existe: {test_path}")
+        return 1
+
+    test_code = test_path.read_text()
+    score = evaluar_test_con_llm(
+        rn_descripcion=args.rn_descripcion,
+        test_code=test_code,
+    )
+
+    if score is None:
+        print("❌ no se pudo obtener evaluacion del LLM (api key, error HTTP, o respuesta no parseable)")
+        return 1
+
+    if getattr(args, "json", False):
+        print(_json.dumps(
+            {"verifica": score.verifica, "confidence": score.confidence, "razon": score.razon},
+            indent=2, ensure_ascii=False,
+        ))
+    else:
+        verdict = "✅ VERIFICA" if score.verifica else "❌ NO VERIFICA"
+        print(f"{verdict} (confidence: {score.confidence:.2f})")
+        print(f"Razon: {score.razon}")
+
+    return 0 if score.verifica else 1
     result = _install(project_root=project_root, wrapper=wrapper, host=host)
 
     if getattr(args, "json", False):
