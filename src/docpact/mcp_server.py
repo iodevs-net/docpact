@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -31,6 +33,41 @@ logging.basicConfig(
     stream=sys.stderr,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
+
+
+# ── Diagnóstico (usado por `docpact mcp-doctor` y al arrancar) ──
+
+
+def diagnostico() -> dict[str, Any]:
+    """Diagnóstico del entorno MCP — clave cuando el host no carga las tools.
+
+    Retorna dict con: python_version, docpact_path, binary_in_PATH, cwd,
+    project_root_env, index_path, index_exists. Sin secretos.
+    """
+    cwd = os.getcwd()
+    return {
+        "python_version": sys.version.split()[0],
+        "python_executable": sys.executable,
+        "docpact_module_path": str(Path(__file__).resolve()),
+        "docpact_in_PATH": shutil.which("docpact"),
+        "cwd": cwd,
+        "project_root_env": os.environ.get("DOCPACT_PROJECT_ROOT"),
+        "index_path": str(Path(cwd) / ".docpact" / "index.json"),
+        "index_exists": (Path(cwd) / ".docpact" / "index.json").exists(),
+    }
+
+
+def _log_startup_info() -> None:
+    """Log de diagnóstico al arrancar — clave cuando el host MCP no carga tools."""
+    diag = diagnostico()
+    logger.info("docpact MCP server v2 starting (stdio)")
+    logger.info("  Python:         %s", diag["python_version"])
+    logger.info("  docpact path:   %s", diag["docpact_module_path"])
+    logger.info("  docpact in PATH: %s", diag["docpact_in_PATH"] or "NOT FOUND")
+    logger.info("  CWD:            %s", diag["cwd"])
+    logger.info("  Project root:   %s", diag["project_root_env"] or "(CWD)")
+    logger.info("  Index:          %s [%s]", diag["index_path"],
+                "EXISTS" if diag["index_exists"] else "MISSING — run `docpact index`")
 
 
 # ── Estado global del servidor ──
@@ -682,7 +719,7 @@ def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
 
 def main() -> int:
     """Loop principal del MCP server v2."""
-    logger.info("docpact MCP server v2 started (stdio)")
+    _log_startup_info()
 
     for line in sys.stdin:
         if not line.strip():

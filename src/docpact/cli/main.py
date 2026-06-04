@@ -12,8 +12,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
+
+logger = logging.getLogger("docpact.cli")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -189,6 +192,20 @@ def main(argv: list[str] | None = None) -> int:
         help="Raíz del proyecto (default: directorio actual)",
     )
 
+    # ├─ mcp-doctor
+    doctor_parser = subparsers.add_parser(
+        "mcp-doctor",
+        help="Diagnostica por qué las tools MCP no cargan en el host (stdio, wrapper, etc.)",
+    )
+    doctor_parser.add_argument(
+        "--project-root", type=str, default=".",
+        help="Raíz del proyecto (default: directorio actual)",
+    )
+    doctor_parser.add_argument(
+        "--json", action="store_true",
+        help="Output estructurado en JSON (para tooling y agentes)",
+    )
+
     # ├─ init  (Fase 4 — placeholder)
     init_parser = subparsers.add_parser(
         "init", help="Genera esqueletos de CONTRATO para funciones sin contrato"
@@ -265,6 +282,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_validate(args)
     elif args.command == "mcp":
         return _cmd_mcp(args)
+    elif args.command == "mcp-doctor":
+        return _cmd_mcp_doctor(args)
     elif args.command == "doctor":
         return _cmd_doctor(args)
     elif args.command == "fix":
@@ -483,6 +502,13 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
     resultado = check_proyecto(args.path, config, diff_only=args.diff)
 
+    # Auto-check pasivo MCP (1 linea): silente si OK, warn si falta algo
+    from docpact.mcp_server import diagnostico as _diag
+    _d = _diag()
+    if not _d["index_exists"]:
+        logger.warning("docpact MCP no esta listo: index no existe — corre `docpact index`")
+    elif not _d["docpact_in_PATH"]:
+        logger.warning("docpact MCP no esta listo: binario no esta en PATH")
     # Salida
     tf = resultado.total_funciones
     tc = resultado.funciones_con_contrato
@@ -1004,6 +1030,45 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
         os.environ["DOCPACT_PROJECT_ROOT"] = os.path.abspath(args.project_root)
 
     return mcp_main()
+
+
+def _cmd_mcp_doctor(args: argparse.Namespace) -> int:
+    """Diagnostica el entorno MCP. Sale 0 si OK, 1 si hay problemas."""
+    from docpact.mcp_server import diagnostico
+    import json as _json
+    import os
+
+    if args.project_root:
+        os.environ["DOCPACT_PROJECT_ROOT"] = os.path.abspath(args.project_root)
+
+    diag = diagnostico()
+    problemas = []
+    if not diag["docpact_in_PATH"]:
+        problemas.append("docpact no esta en PATH — el host MCP no lo va a encontrar")
+    if not diag["index_exists"]:
+        problemas.append("index no existe — corre `docpact index` antes de usar MCP")
+
+    if getattr(args, "json", False):
+        out = dict(diag)
+        out["problemas"] = problemas
+        out["ok"] = not problemas
+        print(_json.dumps(out, indent=2, ensure_ascii=False))
+    else:
+        print("docpact MCP doctor\n")
+        print(f"  Python:          {diag['python_version']}")
+        print(f"  docpact path:    {diag['docpact_module_path']}")
+        print(f"  docpact in PATH: {diag['docpact_in_PATH'] or 'NOT FOUND'}")
+        print(f"  CWD:             {diag['cwd']}")
+        print(f"  Project root:    {diag['project_root_env'] or '(CWD)'}")
+        print(f"  Index:           {diag['index_path']}")
+        print(f"  Index exists:    {'YES' if diag['index_exists'] else 'NO'}\n")
+        if problemas:
+            print("PROBLEMAS DETECTADOS:")
+            for p in problemas:
+                print(f"  - {p}")
+            return 1
+        print("OK — entorno listo para MCP")
+    return 0 if not problemas else 1
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
