@@ -7,6 +7,7 @@ SRP: El CONTRATO documenta la RN, el test verifica, docpact conecta ambos.
 """
 
 from __future__ import annotations
+import ast
 
 import subprocess
 import sys
@@ -121,4 +122,88 @@ def check_rn_tests_pasan(
                     sugerencia=f"Corrige la regla o el test en {test_file}",
                 )
             )
+    return errores
+"""Append para rn_test_checker.py — funcion check_rn_test_quality."""
+
+
+def _es_assert_trivial(node: ast.Assert) -> bool:
+    """Detecta asserts triviales: `assert True`, `assert 1`, `assert "x"`.
+
+    Spec: un test util debe tener al menos 1 assert que verifique una
+    condicion real (comparacion, llamada, etc.). Un assert sobre una
+    constante truthy no prueba nada — es placebo.
+    """
+    if isinstance(node.test, ast.Constant):
+        return bool(node.test.value)
+    return False
+
+
+def check_rn_test_quality(proyecto_root: Path) -> list[ErrorParser]:
+    """Detecta tests placeholder en tests/rn/test_rn_*.py.
+
+    Heuristicas:
+    - Cuerpo vacio o solo `pass` → WARNING
+    - Sin asserts en el cuerpo → WARNING
+    - Todos los asserts son triviales (assert True, assert 1, etc.) → WARNING
+
+    Es opt-in: no se ejecuta en `docpact check` por defecto. Para correrlo:
+        docpact test-quality --project-root <path>
+    """
+    errores: list[ErrorParser] = []
+    test_dir = proyecto_root / "tests" / "rn"
+    if not test_dir.is_dir():
+        return errores
+
+    for test_file in sorted(test_dir.glob("test_rn_*.py")):
+        try:
+            tree = ast.parse(test_file.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            if not node.name.startswith("test_"):
+                continue
+
+            statements_utiles = [
+                n for n in node.body
+                if not isinstance(n, ast.Pass)
+            ]
+            if not statements_utiles:
+                errores.append(
+                    ErrorParser(
+                        "test_quality",
+                        f"Test placeholder: {test_file.name}::{node.name} "
+                        f"tiene cuerpo vacio o solo `pass`",
+                        linea=node.lineno,
+                        sugerencia="Agregar al menos 1 assert significativo",
+                    )
+                )
+                continue
+
+            asserts = [n for n in ast.walk(node) if isinstance(n, ast.Assert)]
+            if not asserts:
+                errores.append(
+                    ErrorParser(
+                        "test_quality",
+                        f"Test sin asserts: {test_file.name}::{node.name} "
+                        f"no verifica ninguna condicion",
+                        linea=node.lineno,
+                        sugerencia="Agregar al menos 1 assert que verifique la regla",
+                    )
+                )
+                continue
+
+            if all(_es_assert_trivial(a) for a in asserts):
+                errores.append(
+                    ErrorParser(
+                        "test_quality",
+                        f"Test con asserts triviales: {test_file.name}::{node.name} "
+                        f"solo tiene 'assert True' (o similar)",
+                        linea=node.lineno,
+                        sugerencia="Reemplazar con assert real (comparacion, llamada, etc.)",
+                    )
+                )
+
     return errores

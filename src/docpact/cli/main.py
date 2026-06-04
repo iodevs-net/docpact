@@ -206,6 +206,20 @@ def main(argv: list[str] | None = None) -> int:
         help="Output estructurado en JSON (para tooling y agentes)",
     )
 
+    # ├─ test-quality
+    quality_parser = subparsers.add_parser(
+        "test-quality",
+        help="Detecta tests placeholder (cuerpo vacio, assert True, etc.)",
+    )
+    quality_parser.add_argument(
+        "--project-root", type=str, default=".",
+        help="Raíz del proyecto (default: directorio actual)",
+    )
+    quality_parser.add_argument(
+        "--json", action="store_true",
+        help="Output estructurado en JSON",
+    )
+
     # ├─ init  (Fase 4 — placeholder)
     init_parser = subparsers.add_parser(
         "init", help="Genera esqueletos de CONTRATO para funciones sin contrato"
@@ -284,6 +298,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_mcp(args)
     elif args.command == "mcp-doctor":
         return _cmd_mcp_doctor(args)
+    elif args.command == "test-quality":
+        return _cmd_test_quality(args)
     elif args.command == "doctor":
         return _cmd_doctor(args)
     elif args.command == "fix":
@@ -1069,6 +1085,28 @@ def _cmd_mcp_doctor(args: argparse.Namespace) -> int:
             return 1
         print("OK — entorno listo para MCP")
     return 0 if not problemas else 1
+
+
+def _cmd_test_quality(args: argparse.Namespace) -> int:
+    """Detecta tests placeholder en tests/rn/. Sale 1 si hay issues, 0 si OK."""
+    from docpact.checker.rn_test_checker import check_rn_test_quality
+    import json as _json
+    from pathlib import Path as _P
+
+    root = _P(args.project_root).resolve()
+    issues = check_rn_test_quality(root)
+    if getattr(args, "json", False):
+        out = [{"tipo": i.tipo, "mensaje": i.mensaje, "linea": i.linea} for i in issues]
+        print(_json.dumps({"ok": not issues, "count": len(issues), "issues": out},
+                          indent=2, ensure_ascii=False))
+    else:
+        if not issues:
+            print("OK — todos los tests en tests/rn/ son reales")
+        else:
+            print(f"Encontrados {len(issues)} tests placeholder:\n")
+            for i in issues:
+                print(f"  {i.mensaje}")
+    return 1 if issues else 0
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
