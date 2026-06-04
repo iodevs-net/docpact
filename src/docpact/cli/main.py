@@ -220,6 +220,28 @@ def main(argv: list[str] | None = None) -> int:
         help="Output estructurado en JSON",
     )
 
+
+    # ├─ install-mcp
+    install_parser = subparsers.add_parser(
+        "install-mcp",
+        help="Configura docpact como MCP server en el host del agent (OMP/Claude Code)",
+    )
+    install_parser.add_argument(
+        "--project-root", type=str, default=".",
+        help="Raíz del proyecto (default: directorio actual)",
+    )
+    install_parser.add_argument(
+        "--wrapper", type=str, default=None,
+        help="Path al wrapper script (default: scripts/docpact-mcp-wrapper.sh en project-root)",
+    )
+    install_parser.add_argument(
+        "--host", type=str, default=None,
+        help="Forzar host ('omp', 'omp_project', 'claude_code', 'project'). Default: autodetectar",
+    )
+    install_parser.add_argument(
+        "--json", action="store_true",
+        help="Output estructurado en JSON",
+    )
     # ├─ init  (Fase 4 — placeholder)
     init_parser = subparsers.add_parser(
         "init", help="Genera esqueletos de CONTRATO para funciones sin contrato"
@@ -300,6 +322,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_mcp_doctor(args)
     elif args.command == "test-quality":
         return _cmd_test_quality(args)
+    elif args.command == "install-mcp":
+        return _cmd_install_mcp(args)
     elif args.command == "doctor":
         return _cmd_doctor(args)
     elif args.command == "fix":
@@ -1086,6 +1110,53 @@ def _cmd_mcp_doctor(args: argparse.Namespace) -> int:
         print("OK — entorno listo para MCP")
     return 0 if not problemas else 1
 
+
+def _cmd_install_mcp(args: argparse.Namespace) -> int:
+    """Configura docpact como MCP server. Sale 0 si OK, 1 si falla."""
+    from pathlib import Path as _P
+    import json as _json
+    from docpact.installer import detectar_host, install_mcp as _install
+
+    project_root = _P(args.project_root).resolve()
+    wrapper = (
+        _P(args.wrapper).resolve() if args.wrapper
+        else project_root / "scripts" / "docpact-mcp-wrapper.sh"
+    )
+    host = args.host or detectar_host()
+
+    if not wrapper.exists():
+        msg = f"wrapper no existe: {wrapper}"
+        if getattr(args, "json", False):
+            print(_json.dumps({"ok": False, "error": msg}))
+        else:
+            print(f"❌ {msg}")
+            print(f"   Creá el wrapper primero o pasá --wrapper /path/to/wrapper.sh")
+        return 1
+
+    result = _install(project_root=project_root, wrapper=wrapper, host=host)
+
+    if getattr(args, "json", False):
+        result_json = {
+            "ok": result["error"] is None,
+            "host": result["host"],
+            "config_path": str(result["config_path"]) if result["config_path"] else None,
+            "wrapper_verified": result["wrapper_verified"],
+            "error": result["error"],
+        }
+        print(_json.dumps(result_json, indent=2))
+    else:
+        if result["error"]:
+            print(f"❌ {result['error']}")
+            return 1
+        print(f"✅ MCP docpact instalado para host '{result['host']}'")
+        print(f"   config: {result['config_path']}")
+        print(f"   wrapper: {'verificado' if result['wrapper_verified'] else 'FALLA'}")
+        if host in ("omp", "omp_project"):
+            print(f"   → Reiniciá OMP para que cargue la nueva config")
+        else:
+            print(f"   → Reiniciá Claude Code para que cargue la nueva config")
+
+    return 0 if result["error"] is None else 1
 
 def _cmd_test_quality(args: argparse.Namespace) -> int:
     """Detecta tests placeholder en tests/rn/. Sale 1 si hay issues, 0 si OK."""
