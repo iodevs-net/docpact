@@ -97,6 +97,7 @@ def check_marker_honesty(
     fuente: str,
     nombre_funcion: str = "",
     prefijo: str = _DEFAULT_RN_PREFIX,
+    enabled: bool = True,
 ) -> list[ErrorParser]:
     """Detecta markers # RN-XXX en líneas de delegación.
 
@@ -107,10 +108,14 @@ def check_marker_honesty(
                 a las líneas exactas con sus comments).
         nombre_funcion: Nombre de la función (para mensajes).
         prefijo: Prefijo de RN (default "RN-").
+        enabled: Si False, retorna lista vacía (check desactivado).
 
     Returns:
         Lista de WARNs. Lista vacía si todos los markers son honestos.
     """
+    if not enabled:
+        return []
+
     if not contrato_rn_ids:
         return []
 
@@ -170,6 +175,7 @@ def check_marcador_concentrado(
     contrato_rn_ids: list[str],
     nombre_funcion: str = "",
     umbral: int = 5,
+    enabled: bool = True,
 ) -> Optional[ErrorParser]:
     """Detecta funciones con demasiadas RNs declaradas (sospechoso).
 
@@ -181,10 +187,14 @@ def check_marcador_concentrado(
         contrato_rn_ids: IDs RN declarados en el CONTRATO.
         nombre_funcion: Nombre de la función (para mensajes).
         umbral: Máximo de RNs antes de emitir WARN. Default 5.
+        enabled: Si False, retorna None (check desactivado).
 
     Returns:
         WARN si se excede el umbral, None en caso contrario.
     """
+    if not enabled:
+        return None
+
     if len(contrato_rn_ids) <= umbral:
         return None
 

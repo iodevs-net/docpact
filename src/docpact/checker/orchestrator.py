@@ -23,6 +23,10 @@ from docpact.checker.rn_checker import (
     extraer_comentarios_desde_fuente,
     _extraer_ids_rn,
 )
+from docpact.checker.marker_honesty import (
+    check_marker_honesty,
+    check_marcador_concentrado,
+)
 from docpact.checker.deps_checker import check_deps
 from docpact.checker.import_checker import check_inline_imports
 
@@ -1067,6 +1071,7 @@ def _check_rn_con_fuente(
     fuente: str,
     prefix: str,
     nombre: str,
+    config: Optional[DocpactConfig] = None,
 ) -> list[ErrorParser]:
     """Verifica RNs usando la fuente original para extraer comentarios."""
     if not contrato.rn:
@@ -1089,6 +1094,23 @@ def _check_rn_con_fuente(
                     sugerencia=f"Agrega '# {rn.id}' en el lugar donde se implementa",
                 )
             )
+
+    # Marker honesty: detectar # RN-XXX en líneas de delegación
+    rn_ids = [rn.id for rn in contrato.rn]
+    honesty_enabled = getattr(config, "marker_honesty_enabled", True)
+    honesty_max = getattr(config, "marker_honesty_max_rns", 5)
+    honesty_errors = check_marker_honesty(
+        node, rn_ids, fuente, nombre, prefix, enabled=honesty_enabled
+    )
+    errores.extend(honesty_errors)
+
+    # Concentración sospechosa: >umbral RNs en una función
+    concentrado = check_marcador_concentrado(
+        rn_ids, nombre, umbral=honesty_max, enabled=honesty_enabled
+    )
+    if concentrado is not None:
+        errores.append(concentrado)
+
     return errores
 
 

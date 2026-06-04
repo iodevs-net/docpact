@@ -171,3 +171,60 @@ def test_exacto_en_umbral_no_warns():
     """5 RNs con umbral 5 → no warn (el > es estricto)."""
     rns = ["RN-001", "RN-002", "RN-003", "RN-004", "RN-005"]
     assert check_marcador_concentrado(rns, "f", umbral=5) is None
+
+
+def test_check_desactivado_retorna_vacio():
+    """Si enabled=False, check_marker_honesty retorna lista vacía."""
+    codigo = '''
+def helper():
+    """CONTRATO:
+    rn: [RN-001]
+    """
+    return Service.process()  # RN-001
+'''
+    node = ast.parse(codigo).body[0]
+    errores = check_marker_honesty(node, ["RN-001"], codigo, "helper", enabled=False)
+    assert errores == []
+
+
+def test_concentrado_desactivado_retorna_none():
+    """Si enabled=False, check_marcador_concentrado retorna None."""
+    rns = ["RN-001"] * 10
+    resultado = check_marcador_concentrado(rns, "f", umbral=5, enabled=False)
+    assert resultado is None
+
+
+# ---- Integración con config -----------------------------------------------
+
+
+def test_config_lee_marker_honesty():
+    """DocpactConfig lee la sección [docpact.marker_honesty] del TOML."""
+    import tempfile
+
+    from docpact.config import DocpactConfig
+
+    toml_content = """
+[docpact.marker_honesty]
+enabled = true
+max_rns_per_function = 3
+"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+        f.write(toml_content)
+        ruta = f.name
+
+    try:
+        config = DocpactConfig.desde_toml(ruta)
+        assert config.marker_honesty_enabled is True
+        assert config.marker_honesty_max_rns == 3
+    finally:
+        import os
+        os.unlink(ruta)
+
+
+def test_config_defaults_sin_toml():
+    """Sin docpact.toml, defaults son enabled=True, max=5."""
+    from docpact.config import DocpactConfig
+
+    config = DocpactConfig()
+    assert config.marker_honesty_enabled is True
+    assert config.marker_honesty_max_rns == 5

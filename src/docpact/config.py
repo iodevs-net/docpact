@@ -55,6 +55,7 @@ class DocpactConfig:
         types_allowlist: Optional[set[str]] = None,
         run_tests: bool = True,
         run_runtime: bool = True,
+        marker_honesty: Optional[dict] = None,
     ):
         self.strict = strict
         self.min_score = min_score
@@ -67,6 +68,10 @@ class DocpactConfig:
         self.types_allowlist: set[str] = types_allowlist or set()
         self.run_tests = run_tests
         self.run_runtime = run_runtime
+        # Marker honesty: defaults conservadores
+        mh = marker_honesty or {}
+        self.marker_honesty_enabled: bool = mh.get("enabled", True)
+        self.marker_honesty_max_rns: int = mh.get("max_rns_per_function", 5)
         self._patrones_compilados: Optional[dict[str, list[re.Pattern[str]]]] = None
 
     def debe_suprimir(self, mensaje: str) -> bool:
@@ -158,6 +163,9 @@ class DocpactConfig:
         # Types allowlist: tipos que nunca deben generar warning
         types_allowlist = set(docpact_cfg.get("types_allowlist", []))
 
+        # Marker honesty config (sección [docpact.marker_honesty])
+        mh_cfg = docpact_cfg.get("marker_honesty", {})
+
         # Cargar módulos desde docpact.toml (sección [modules])
         modules = dict(data.get("modules", {}))
 
@@ -185,6 +193,7 @@ class DocpactConfig:
             modules=modules,
             types_allowlist=types_allowlist if types_allowlist else None,
             run_tests=run_tests,
+            marker_honesty=mh_cfg,
         )
 
 
