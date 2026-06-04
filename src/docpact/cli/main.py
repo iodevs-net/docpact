@@ -242,6 +242,28 @@ def main(argv: list[str] | None = None) -> int:
         "--json", action="store_true",
         help="Output estructurado en JSON",
     )
+
+    # ├─ config-suggest
+    suggest_parser = subparsers.add_parser(
+        "config-suggest",
+        help="Sugiere bloques [docpact.rn_patrones.RN-XXX] para RNs sin validador",
+    )
+    suggest_parser.add_argument(
+        "--project-root", type=str, default=".",
+        help="Raíz del proyecto a analizar (default: directorio actual)",
+    )
+    suggest_parser.add_argument(
+        "--apply", action="store_true",
+        help="Escribir las sugerencias a docpact.toml (default: dry-run)",
+    )
+    suggest_parser.add_argument(
+        "--min-confidence", type=float, default=0.5,
+        help="Confidence mínima para incluir una sugerencia (0-1, default: 0.5)",
+    )
+    suggest_parser.add_argument(
+        "--json", action="store_true",
+        help="Output estructurado en JSON",
+    )
     # ├─ init  (Fase 4 — placeholder)
     init_parser = subparsers.add_parser(
         "init", help="Genera esqueletos de CONTRATO para funciones sin contrato"
@@ -324,6 +346,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_test_quality(args)
     elif args.command == "install-mcp":
         return _cmd_install_mcp(args)
+    elif args.command == "config-suggest":
+        return _cmd_config_suggest(args)
     elif args.command == "doctor":
         return _cmd_doctor(args)
     elif args.command == "fix":
@@ -1133,6 +1157,63 @@ def _cmd_install_mcp(args: argparse.Namespace) -> int:
             print(f"   Creá el wrapper primero o pasá --wrapper /path/to/wrapper.sh")
         return 1
 
+
+def _cmd_config_suggest(args: argparse.Namespace) -> int:
+    """Sugiere config TOML para RNs sin validador. Sale 0 si OK, 1 si falla."""
+    from pathlib import Path as _P
+    import json as _json
+    from docpact.config_suggest import sugerir_spec_para_contrato
+    from docpact.extractor import extract_contratos
+
+    root = _P(args.project_root).resolve()
+    if not root.exists():
+        print(f"❌ project root no existe: {root}")
+        return 1
+
+    contratos = extract_contratos(root)
+    sugerencias: list[dict] = []
+    for c in contratos:
+        if not c.contrato.rn:
+            continue
+        sug = sugerir_spec_para_contrato(c.contrato)
+        if sug["confidence"] >= args.min_confidence:
+            sugerencias.append(sug)
+
+    if getattr(args, "json", False):
+        print(_json.dumps(
+            {"ok": True, "count": len(sugerencias), "sugerencias": sugerencias},
+            indent=2, ensure_ascii=False,
+        ))
+    else:
+        if not sugerencias:
+            print("OK — no se encontraron sugerencias aplicables")
+            return 0
+        print(f"📋 {len(sugerencias)} sugerencias de config:\n")
+        for s in sugerencias:
+            rn_id = s["bloque_toml"].split("\n")[0].split(".")[-1].rstrip("]")
+            print(f"  {rn_id} → {s['tipo']} (confidence: {s['confidence']:.2f})")
+        print("\n--- Bloques TOML sugeridos ---")
+        for s in sugerencias:
+            print(s["bloque_toml"])
+        if not args.apply:
+            print("💡 Pasá --apply para escribir a docpact.toml")
+
+    if args.apply:
+        from docpact.config import DocpactConfig
+        config_path = root / "docpact.toml"
+        bloques = "\n".join(s["bloque_toml"] for s in sugerencias)
+        if config_path.exists():
+            contenido = config_path.read_text()
+            if "[docpact.rn_patrones]" not in contenido:
+                contenido += "\n\n[docpact.rn_patrones]\n" + bloques
+            else:
+                contenido += "\n" + bloques
+        else:
+            contenido = "[docpact.rn_patrones]\n" + bloques
+        config_path.write_text(contenido)
+        print(f"\n✅ {len(sugerencias)} bloques escritos a {config_path}")
+
+    return 0
     result = _install(project_root=project_root, wrapper=wrapper, host=host)
 
     if getattr(args, "json", False):
