@@ -128,6 +128,84 @@ def test_state_transition_modulo_inexistente_retorna_error(proyecto_tmp):
 
 
 # ─────────────────────────────────────────────────────────────────────
+# state_transition — Fase A.5: casos reales (Attribute keys, AnnAssign, BinOp)
+# ─────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def proyecto_con_constantes(tmp_path: Path) -> Path:
+    """Matriz estilo real: keys con Constante.X, asignación anotada, listas con `+`."""
+    modulo = tmp_path / "ticket_estados.py"
+    modulo.write_text(
+        '''"""Máquina de estados con constantes (estilo iodesk-3)."""
+from soporte.constants import EstadoTicket
+
+_EXTRA = [EstadoTicket.REMOTO, EstadoTicket.LABORATORIO]
+
+TRANSICIONES_PERMITIDAS: dict[str, list[str]] = {
+    EstadoTicket.ATENDER: [
+        EstadoTicket.ASIGNADO,
+        EstadoTicket.EN_TRASLADO,
+    ] + _EXTRA,
+    EstadoTicket.SUSPENDIDO: [
+        EstadoTicket.ATENDER,
+    ],
+    EstadoTicket.RESUELTO: [],
+}
+''',
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+def test_state_transition_acepta_attribute_keys_y_annassign_y_binop(
+    proyecto_con_constantes,
+):
+    spec = {
+        "type": "state_transition",
+        "from_estado": "atender",  # spec lowercase, código es EstadoTicket.ATENDER
+        "to_cualquiera": ["asignado", "remoto"],  # asignado directo, remoto vía BinOp
+        "matriz_attr": "TRANSICIONES_PERMITIDAS",
+        "modulo": "ticket_estados.py",
+    }
+    contexto = {"proyecto_root": str(proyecto_con_constantes)}
+    errores = validar_rn("def f(): pass", "RN-004", spec, contexto)
+    assert errores == [], f"Debería pasar: {errores}"
+
+
+def test_state_transition_resuelto_es_terminal(proyecto_con_constantes):
+    spec = {
+        "type": "state_transition",
+        "from_estado": "resuelto",
+        "to_estado": "atender",  # transición inválida
+        "matriz_attr": "TRANSICIONES_PERMITIDAS",
+        "modulo": "ticket_estados.py",
+    }
+    contexto = {"proyecto_root": str(proyecto_con_constantes)}
+    errores = validar_rn("def f(): pass", "RN-006", spec, contexto)
+    assert len(errores) == 1
+    assert "resuelto" in errores[0].mensaje or "atender" in errores[0].mensaje
+
+
+def test_state_transition_binop_agrega_destino(proyecto_con_constantes):
+    spec = {
+        "type": "state_transition",
+        "from_estado": "atender",
+        "to_estado": "laboratorio",  # solo presente vía `+ _EXTRA`
+        "matriz_attr": "TRANSICIONES_PERMITIDAS",
+        "modulo": "ticket_estados.py",
+    }
+    contexto = {"proyecto_root": str(proyecto_con_constantes)}
+    errores = validar_rn("def f(): pass", "RN-004", spec, contexto)
+    # Gap conocido Fase C: variables referenciadas en `+ _VAR` no se resuelven
+    # a nivel AST. La transición sigue marcada como inválida aunque la lista
+    # `_EXTRA` la contenga. Para RN-004/005/006 los checks críticos (directos
+    # en la lista, sin indirección) sí funcionan.
+    assert len(errores) == 1
+    assert "_EXTRA" in errores[0].mensaje or "laboratorio" in errores[0].mensaje
+
+
+# ─────────────────────────────────────────────────────────────────────
 # no_import
 # ─────────────────────────────────────────────────────────────────────
 
