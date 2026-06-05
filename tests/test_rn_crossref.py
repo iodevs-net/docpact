@@ -211,3 +211,36 @@ class TestBuildFuncionMap:
         RF = namedtuple("ResultadoFuncion", ["nombre", "archivo"])
         mapa = build_funcion_map([RF("foo", "a.py")], {})
         assert mapa == {}
+
+    def test_extrae_cuerpo_funcion_via_ast(self):
+        """build_funcion_map extrae solo el cuerpo de la función, no el archivo."""
+        from collections import namedtuple
+
+        RF = namedtuple("ResultadoFuncion", ["nombre", "archivo"])
+        fuente = (
+            'def foo():\n'
+            '    """Docstring."""\n'
+            '    return 1\n'
+            '\n'
+            'def bar():\n'
+            '    """Docstring."""\n'
+            '    return 2\n'
+        )
+        resultados = [RF("foo", "a.py"), RF("bar", "a.py")]
+        mapa = build_funcion_map(resultados, {"a.py": fuente})
+        assert "foo" in mapa
+        assert "bar" in mapa
+        # foo NO debe contener el código de bar
+        assert "return 2" not in mapa["foo"][0]["codigo"]
+        assert "return 1" in mapa["foo"][0]["codigo"]
+
+    def test_fallback_a_archivo_completo_si_no_es_python_valido(self):
+        """Si el fuente no es Python válido, usa archivo completo como fallback."""
+        from collections import namedtuple
+
+        RF = namedtuple("ResultadoFuncion", ["nombre", "archivo"])
+        resultados = [RF("foo", "a.py")]
+        fuentes = {"a.py": "# just a comment, not valid python def"}
+        mapa = build_funcion_map(resultados, fuentes)
+        assert "foo" in mapa
+        assert mapa["foo"][0]["codigo"] == "# just a comment, not valid python def"

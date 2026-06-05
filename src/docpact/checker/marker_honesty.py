@@ -53,12 +53,13 @@ def _es_linea_delegacion(stmt: ast.stmt) -> bool:
     - `x = 1` (sin call)
     - `x = func()` donde func es local (definida arriba en el cuerpo)
     - Bloques `if/while/try` con lógica dentro
-
-    KISS: no intentamos inferir si el call es a un service externo o
-    a una función local. Eso requeriría resolución de símbolos
-    (out of scope). Asumimos que si la línea es SOLO una llamada
-    a un atributo (X.y), probablemente es delegación.
+    - `x.field = value` (asignación a campo de objeto — implementación real)
+    - ORM calls: .objects.create, .save, .filter, etc.
     """
+    # Asignación a campo de objeto → NO es delegación
+    if _es_asignacion_campo(stmt):
+        return False
+
     if isinstance(stmt, ast.Return) and stmt.value is not None:
         return _es_call_externo(stmt.value)
 
@@ -72,13 +73,68 @@ def _es_linea_delegacion(stmt: ast.stmt) -> bool:
 
 
 def _es_call_externo(expr: ast.expr) -> bool:
-    """Detecta si una expresión es una llamada a un atributo (X.y())."""
+    """Detecta si una expresión es una delegación a un service externo.
+
+    Una delegación es una llamada X.y() donde y NO es un ORM/método de modelo.
+    Excluye patrones conocidos de implementación real:
+    - ORM: .objects.create, .objects.filter, .save, .delete, .update, .get_or_create
+    - Field assignment: x.field = value (aunque el value sea un call)
+    - Cache: .get, .set, .delete
+    - QuerySet: .filter, .exclude, .annotate, .aggregate
+    """
     if not isinstance(expr, ast.Call):
         return False
+
     # X.y() → func es ast.Attribute
-    if isinstance(expr.func, ast.Attribute):
-        return True
-    # func() directo (no X.y) → probablemente local
+    if not isinstance(expr.func, ast.Attribute):
+        return False
+
+    metodo = expr.func.attr
+
+    # Métodos ORM / modelo → NO es delegación, es implementación real
+    _ORM_METHODS = {
+        "create", "save", "delete", "update", "bulk_create",
+        "get_or_create", "update_or_create", "bulk_update",
+        "filter", "exclude", "annotate", "aggregate", "order_by",
+        "first", "last", "exists", "count", "get", "all",
+        "values", "values_list", "distinct", "select_related",
+        "prefetch_related", "none", "union", "intersection", "difference",
+    }
+    if metodo in _ORM_METHODS:
+        return False
+
+    # Atributos ORM: .objects, .objects.create, etc.
+    _ORM_ATTRS = {"objects", "objects", "DoesNotExist", "MultipleObjectsReturned"}
+    if isinstance(expr.func.value, ast.Attribute):
+        if expr.func.value.attr in _ORM_ATTRS:
+            return False
+
+    # Cache methods: .get, .set, .delete en cache
+    _CACHE_METHODS = {"get", "set", "delete", "clear"}
+    if metodo in _CACHE_METHODS:
+        # Heurística: si el objeto parece ser cache (nombre contiene "cache")
+        # no es delegación. No podemos verificar el nombre del objeto en AST
+        # puro, pero podemos asumir que .get/.set/.delete en general son
+        # operaciones de datos, no delegación de lógica de negocio.
+        return False
+
+    return True
+
+
+def _es_asignacion_campo(stmt: ast.stmt) -> bool:
+    """Detecta si un statement es una asignación a campo de objeto.
+
+    Ej: sesion.fin = timezone.now() → NO es delegación, es implementación.
+    """
+    if isinstance(stmt, ast.Assign):
+        if len(stmt.targets) == 1:
+            target = stmt.targets[0]
+            # x.field = value → target es ast.Attribute
+            if isinstance(target, ast.Attribute):
+                return True
+    if isinstance(stmt, ast.AnnAssign):
+        if isinstance(stmt.target, ast.Attribute):
+            return True
     return False
 
 

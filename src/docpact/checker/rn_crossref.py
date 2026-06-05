@@ -7,6 +7,7 @@ en su codigo o CONTRATO.
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 from typing import NamedTuple
@@ -150,8 +151,16 @@ def build_funcion_map(
     resultados_funciones: list,
     fuentes: dict[str, str],
 ) -> dict[str, list[dict[str, str]]]:
-    """Construye mapa de todas las funciones del proyecto con sus definiciones."""
+    """Construye mapa de funciones con su código extraído (no archivo completo).
+
+    Usa AST para extraer solo el cuerpo de cada función, evitando
+    falsos positivos cuando múltiples funciones comparten archivo.
+    """
     mapa: dict[str, list[dict[str, str]]] = {}
+
+    # Pre-parsear archivos ya procesados para reutilizar ASTs
+    _ast_cache: dict[str, ast.Module] = {}
+
     for rf in resultados_funciones:
         nombre = getattr(rf, "nombre", "")
         archivo = getattr(rf, "archivo", "")
@@ -160,8 +169,52 @@ def build_funcion_map(
         fuente = fuentes.get(archivo, "")
         if not fuente:
             continue
+
+        # Extraer solo el cuerpo de la función vía AST
+        codigo_funcion = _extraer_codigo_funcion(fuente, nombre, archivo, _ast_cache)
+        if not codigo_funcion:
+            # Fallback: usar archivo completo (legacy behavior)
+            codigo_funcion = fuente
+
         if nombre not in mapa:
             mapa[nombre] = []
-        mapa[nombre].append({"codigo": fuente, "archivo": archivo})
+        mapa[nombre].append({"codigo": codigo_funcion, "archivo": archivo})
     return mapa
+
+
+def _extraer_codigo_funcion(
+    fuente: str,
+    nombre: str,
+    archivo: str,
+    _ast_cache: dict[str, ast.Module],
+) -> str | None:
+    """Extrae el código fuente de una función por nombre usando AST.
+
+    Retorna el docstring + cuerpo de la función, o None si no se encuentra.
+    """
+    if archivo not in _ast_cache:
+        try:
+            _ast_cache[archivo] = ast.parse(fuente, filename=archivo)
+        except SyntaxError:
+            return None
+
+    tree = _ast_cache[archivo]
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name == nombre:
+                try:
+                    segment = ast.get_source_segment(fuente, node)
+                    if segment:
+                        return segment
+                except (TypeError, ValueError):
+                    pass
+                # Fallback: extraer líneas por rango
+                lines = fuente.split("\n")
+                start = node.lineno - 1
+                end = getattr(node, "end_lineno", None)
+                if end:
+                    return "\n".join(lines[start:end])
+                # Sin end_lineno (Python < 3.8): tomar hasta siguiente def/nivel
+                return "\n".join(lines[start:start + 50])
+    return None
 

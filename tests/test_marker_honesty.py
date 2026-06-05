@@ -133,6 +133,64 @@ def test_docstring_no_se_considera_delegacion():
     assert errores == []
 
 
+def test_orm_create_no_es_delegacion():
+    """ORM calls como .objects.create() NO son delegación."""
+    codigo = '''def crear_entrada():
+    """CONTRATO:
+    rn: [RN-BIT-001]
+    """
+    return BitacoraTicket.objects.create(  # RN-BIT-001
+        ticket=ticket, usuario=usuario, entrada=entrada
+    )
+'''
+    node = ast.parse(codigo).body[0]
+    errores = check_marker_honesty(node, ["RN-BIT-001"], codigo, "crear_entrada")
+    assert errores == []
+
+
+def test_orm_save_no_es_delegacion():
+    """Model.save() NO es delegación."""
+    codigo = '''def finalizar():
+    """CONTRATO:
+    rn: [RN-002]
+    """
+    sesion.fin = timezone.now()  # RN-002
+    sesion.save()
+    return sesion
+'''
+    node = ast.parse(codigo).body[0]
+    errores = check_marker_honesty(node, ["RN-002"], codigo, "finalizar")
+    assert errores == []
+
+
+def test_field_assignment_no_es_delegacion():
+    """Asignación a campo de objeto (x.field = value) NO es delegación."""
+    codigo = '''def actualizar():
+    """CONTRATO:
+    rn: [RN-002]
+    """
+    sesion.fin = timezone.now()  # RN-002
+    return sesion
+'''
+    node = ast.parse(codigo).body[0]
+    errores = check_marker_honesty(node, ["RN-002"], codigo, "actualizar")
+    assert errores == []
+
+
+def test_service_method_call_es_delegacion():
+    """Service.method() SÍ es delegación."""
+    codigo = '''def iniciar():
+    """CONTRATO:
+    rn: [RN-002]
+    """
+    return SessionService.start(ticket, usuario)  # RN-002
+'''
+    node = ast.parse(codigo).body[0]
+    errores = check_marker_honesty(node, ["RN-002"], codigo, "iniciar")
+    assert len(errores) == 1
+    assert "delegación" in errores[0].mensaje
+
+
 # ---- check_marcador_concentrado ------------------------------------------
 
 
