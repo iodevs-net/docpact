@@ -265,6 +265,24 @@ def main(argv: list[str] | None = None) -> int:
         help="Output estructurado en JSON",
     )
 
+    # ├─ report — delta REGISTRO.md vs código
+    report_parser = subparsers.add_parser(
+        "report",
+        help="Delta entre REGISTRO.md (reglas declaradas) y código real (implementación)",
+    )
+    report_parser.add_argument(
+        "--project-root", type=str, default=".",
+        help="Raíz del proyecto (default: directorio actual)",
+    )
+    report_parser.add_argument(
+        "--registro", type=str, default=None,
+        help="Path al REGISTRO.md (default: docs/reglas-del-negocio/REGISTRO.md)",
+    )
+    report_parser.add_argument(
+        "--json", action="store_true",
+        help="Output estructurado en JSON (para agentes)",
+    )
+
     # ├─ llm-judge
     llm_judge_parser = subparsers.add_parser(
         "llm-judge",
@@ -364,6 +382,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_install_mcp(args)
     elif args.command == "config-suggest":
         return _cmd_config_suggest(args)
+    elif args.command == "report":
+        return _cmd_report(args)
     elif args.command == "doctor":
         return _cmd_doctor(args)
     elif args.command == "fix":
@@ -1302,6 +1322,33 @@ def _cmd_config_suggest(args: argparse.Namespace) -> int:
         print(f"\n✅ {len(sugerencias)} bloques escritos a {config_path}")
 
     return 0
+
+def _cmd_report(args: argparse.Namespace) -> int:
+    """Genera reporte de delta REGISTRO.md vs código real."""
+    import os
+    from pathlib import Path as _P
+
+    from docpact.reporter import generar_reporte, generar_tabla, generar_json
+
+    project_root = _P(os.path.abspath(args.project_root))
+    registro = args.registro
+
+    resultados = generar_reporte(project_root, registro)
+
+    if not resultados:
+        print("No se encontraron RNs en REGISTRO.md")
+        return 0
+
+    if args.json:
+        print(generar_json(resultados))
+    else:
+        print(generar_tabla(resultados))
+
+    # Exit code: 0 si todo implementado, 1 si hay pendientes
+    no_implementadas = sum(
+        1 for r in resultados if r.implementacion.startswith("❌")
+    )
+    return 1 if no_implementadas > 0 else 0
 
 def _cmd_llm_judge(args: argparse.Namespace) -> int:
     """Evalua si un test verifica la regla usando un LLM."""
