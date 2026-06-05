@@ -21,10 +21,11 @@ from docpact.checker.rn_registry import cargar_registro
 
 
 def _try_load_embedder() -> Any | None:
-    """Intenta cargar TextEmbedding de FastEmbed con multilingual-e5-large.
+    """Intenta cargar TextEmbedding de FastEmbed con paraphrase-multilingual-mpnet-base-v2.
 
-    Modelo: intfloat/multilingual-e5-large (1024 dims, ONNX, multilingual).
-    Mejor calidad que e5-small (384 dims) para retrieval bilingüe.
+    Modelo: sentence-transformers/paraphrase-multilingual-mpnet-base-v2 (768 dims, ONNX).
+    Más robusto que e5-large para docpact: mejor separabilidad entre
+    matches y no-matches (gap 0.207 vs 0.084).
     Si fastembed no está instalado, retorna None (fallback a keyword).
 
     Returns:
@@ -33,7 +34,7 @@ def _try_load_embedder() -> Any | None:
     try:
         from fastembed import TextEmbedding
 
-        return TextEmbedding(model_name="intfloat/multilingual-e5-large")
+        return TextEmbedding(model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2")
     except ImportError:
         return None
 
