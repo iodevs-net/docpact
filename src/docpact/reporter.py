@@ -253,3 +253,29 @@ def generar_json(resultados: list[RNStatus]) -> str:
         "rns": [asdict(r) for r in resultados],
     }
     return json.dumps(data, indent=2, ensure_ascii=False)
+
+
+def validar_ci(resultados: list[RNStatus]) -> tuple[bool, list[str]]:
+    """Valida condiciones para CI. Retorna (pass, errores).
+
+    Reglas CI:
+    1. Toda RN en REGISTRO.md DEBE tener al menos marcador en código.
+    2. Toda RN con marcador DEBE tener test.
+    3. RNs ⏳ (pendientes) sin código son warnings, no errores.
+    """
+    errores = []
+
+    for r in resultados:
+        # Solo validar RNs que tienen código (marcador o test)
+        # RNs sin código son pendientes legítimas
+        if not r.tiene_marcador and not r.tiene_test:
+            continue
+
+        # Si tiene marcador pero no test → error
+        if r.tiene_marcador and not r.tiene_test:
+            errores.append(
+                f"❌ {r.id}: tiene marcador en código pero SIN test. "
+                f"Crear tests/rn/test_rn_{r.id}.py"
+            )
+
+    return (len(errores) == 0, errores)

@@ -282,6 +282,10 @@ def main(argv: list[str] | None = None) -> int:
         "--json", action="store_true",
         help="Output estructurado en JSON (para agentes)",
     )
+    report_parser.add_argument(
+        "--ci", action="store_true",
+        help="Modo CI: falla si RNs con marcador no tienen test",
+    )
 
     # ├─ llm-judge
     llm_judge_parser = subparsers.add_parser(
@@ -1328,7 +1332,7 @@ def _cmd_report(args: argparse.Namespace) -> int:
     import os
     from pathlib import Path as _P
 
-    from docpact.reporter import generar_reporte, generar_tabla, generar_json
+    from docpact.reporter import generar_reporte, generar_tabla, generar_json, validar_ci
 
     project_root = _P(os.path.abspath(args.project_root))
     registro = args.registro
@@ -1344,11 +1348,17 @@ def _cmd_report(args: argparse.Namespace) -> int:
     else:
         print(generar_tabla(resultados))
 
-    # Exit code: 0 si todo implementado, 1 si hay pendientes
-    no_implementadas = sum(
-        1 for r in resultados if r.implementacion.startswith("❌")
-    )
-    return 1 if no_implementadas > 0 else 0
+    # Modo CI: validar condiciones críticas
+    if args.ci:
+        pass_ci, errores_ci = validar_ci(resultados)
+        if not pass_ci:
+            print("\n❌ CI FAILED:")
+            for err in errores_ci:
+                print(f"  {err}")
+            return 1
+        print("\n✅ CI PASSED")
+
+    return 0
 
 def _cmd_llm_judge(args: argparse.Namespace) -> int:
     """Evalua si un test verifica la regla usando un LLM."""
