@@ -1054,6 +1054,12 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
     # Cargar índice
     from docpact.index import cargar_index
+    from docpact.config import DocpactConfig
+    from docpact.checker.marker_honesty import (
+        check_marker_honesty,
+        check_marcador_concentrado,
+    )
+    import ast
     import re
 
     project_root = os.path.abspath(".")
@@ -1061,6 +1067,11 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     if index is None:
         print("⚠️  Índice no encontrado. Ejecuta: docpact index")
         return 0  # No bloquear si no hay índice
+
+    # Leer config para decidir si marker-honesty es bloqueante
+    config = DocpactConfig.desde_toml(
+        os.path.join(project_root, "docpact.toml")
+    )
 
     errores = []
     warnings = []
@@ -1090,12 +1101,64 @@ def _cmd_validate(args: argparse.Namespace) -> int:
                     "mensaje": f"RN '{rn_id}' no existe en REGISTRO.md",
                 })
 
+        # ─── Marker honesty check (pre-commit enforcement) ───
+        # Detecta markers # RN-XXX en líneas de delegación.
+        # Es enforcement real: si hay markers falsos, el commit falla
+        # (a menos que el usuario configure marker_honesty_blocking=false).
+        if not config.marker_honesty_enabled:
+            continue
+
+        try:
+            tree = ast.parse(content, filename=filepath)
+        except SyntaxError:
+            continue  # Dejar que otras herramientas reporten syntax errors
+
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+
+            # Extraer IDs RN del CONTRATO docstring
+            docstring = ast.get_docstring(node, clean=False) or ""
+            contrato_rns = re.findall(r"RN-[\w-]+", docstring)
+            if not contrato_rns:
+                continue
+
+            # Check 1: marker en línea de delegación
+            honesty_errors = check_marker_honesty(
+                node, contrato_rns, content, node.name, enabled=True,
+            )
+            for e in honesty_errors:
+                msg = f"{filepath}:{e.linea}: {e.mensaje}"
+                warnings.append({"archivo": filepath, "mensaje": msg})
+
+            # Check 2: concentración sospechosa
+            concentrado = check_marcador_concentrado(
+                contrato_rns, node.name, enabled=True,
+            )
+            if concentrado is not None:
+                msg = f"{filepath}: {concentrado.mensaje}"
+                warnings.append({"archivo": filepath, "mensaje": msg})
+
     if errores:
         print(f"❌ {len(errores)} errores críticos:")
         for e in errores:
             print(f"   {e['archivo']}: {e['mensaje']}")
         print("\n💡 Corrige estos errores antes de commitar.")
         print("   Para ver warnings: docpact check .")
+        return 1
+
+    if warnings:
+        print(f"⚠️  {len(warnings)} advertencias de marker honesty:")
+        for w in warnings[:10]:  # Limitar output
+            print(f"   {w['mensaje']}")
+        if len(warnings) > 10:
+            print(f"   ... y {len(warnings) - 10} más")
+        print("\n💡 Markers # RN-XXX en líneas de delegación suelen ser falsos.")
+        print("   Mueve el marker a la función que realmente implementa la regla")
+        print("   o agrega la lógica de la regla en la línea marcada.")
+        print("   Para ver todos: docpact check .")
+        # Enforce: warnings bloquean por default (el agente no puede commitear
+        # markers decorativos). Configurable via docpact.toml.
         return 1
 
     print(f"✅ {len(files)} archivos validados OK")
