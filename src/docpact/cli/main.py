@@ -1139,6 +1139,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
                 msg = f"{filepath}: {concentrado.mensaje}"
                 warnings.append({"archivo": filepath, "mensaje": msg})
 
+    # Filtrar warnings suprimidos via docpact.toml [docpact.warnings] suppress
+    warnings = [w for w in warnings if not config.debe_suprimir(w["mensaje"])]
+
     if errores:
         print(f"❌ {len(errores)} errores críticos:")
         for e in errores:
