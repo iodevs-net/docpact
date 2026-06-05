@@ -36,6 +36,8 @@ class RNStatus:
     test_file: Optional[str] = None
     # Delta
     implementacion: str = "DESCONOCIDA"  # ✅ IMPLEMENTADA / 🔶 PARCIAL / ❌ NO IMPLEMENTADA
+    # Dónde implementar (solo para RNs no implementadas)
+    donde: Optional[dict] = None
 
     def calcular_implementacion(self) -> None:
         """Calcula el estado de implementación basado en evidencia encontrada."""
@@ -139,6 +141,59 @@ def _buscar_rn_en_index(index: dict, rn_id: str) -> dict:
     return evidencia
 
 
+def _enriquecer_con_donde(
+    resultados: list[RNStatus], index: dict
+) -> None:
+    """Enriquece RNs no implementadas con sugerencias de dónde implementar.
+
+    Heurística KISS:
+    - Mismo prefijo de RN → mismo módulo (RN-TKT-xxx → soporte/)
+    - RNs implementadas con mismo prefijo → funciones similares
+    - Archivos donde ya hay RNs similares → candidatos
+    """
+    # Agrupar RNs por prefijo (RN-XXX → XXX, RN-SEG-002 → SEG)
+    por_prefijo: dict[str, list[RNStatus]] = {}
+    for r in resultados:
+        partes = r.id.split("-")
+        prefijo = partes[1] if len(partes) > 1 else partes[0]
+        por_prefijo.setdefault(prefijo, []).append(r)
+
+    # Para cada RN no implementada, sugerir basado en RNs hermanas
+    for r in resultados:
+        if not r.implementacion.startswith("❌"):
+            continue
+
+        partes = r.id.split("-")
+        prefijo = partes[1] if len(partes) > 1 else partes[0]
+        hermanas = por_prefijo.get(prefijo, [])
+
+        # RNs hermanas que SÍ están implementadas
+        hermanas_implementadas = [
+            h for h in hermanas
+            if h.implementacion.startswith("✅") and h.id != r.id
+        ]
+
+        # Archivos sugeridos: donde están las hermanas implementadas
+        archivos_sugeridos = []
+        funciones_relacionadas = []
+        for h in hermanas_implementadas:
+            for archivo in h.archivos_marcador:
+                if archivo not in archivos_sugeridos:
+                    archivos_sugeridos.append(archivo)
+            for func in h.funciones_implementacion:
+                if func not in funciones_relacionadas:
+                    funciones_relacionadas.append(func)
+
+        # RNs similares (mismo prefijo, implementadas)
+        similares = [h.id for h in hermanas_implementadas[:3]]
+
+        r.donde = {
+            "archivos_sugeridos": archivos_sugeridos[:5],
+            "funciones_relacionadas": funciones_relacionadas[:5],
+            "rn_similares": similares,
+        }
+
+
 def generar_reporte(
     project_root: str | Path,
     registro_path: Optional[str | Path] = None,
@@ -184,6 +239,9 @@ def generar_reporte(
         )
         status.calcular_implementacion()
         resultados.append(status)
+
+    # 4. Enriquecer RNs no implementadas con sugerencias
+    _enriquecer_con_donde(resultados, index)
 
     return resultados
 
