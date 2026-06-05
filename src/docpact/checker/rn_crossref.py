@@ -63,13 +63,41 @@ def _tiene_rn_en_codigo(codigo: str, rn_id: str) -> bool:
     return bool(re.search(rf"#\s*{re.escape(rn_id)}\b", codigo))
 
 
+def _extraer_rn_ids_de_contrato(codigo: str) -> set[str]:
+    """Extrae IDs RN-XXX del CONTRATO docstring de una función.
+
+    Busca líneas con formato `rn: [RN-XXX, RN-YYY]` o `rn: [RN-XXX]`
+    dentro del docstring de la función. KISS: solo busca el patrón
+    `rn: [RN-...` en las primeras líneas (el docstring está al inicio).
+    """
+    patron = re.compile(r"rn:\s*\[([^\]]*)\]", re.MULTILINE)
+    ids: set[str] = set()
+    for match in patron.finditer(codigo):
+        contenido = match.group(1)
+        # Extraer todos los RN-XXX del contenido
+        for rn_match in re.finditer(r"RN-[\w-]+", contenido):
+            ids.add(rn_match.group())
+    return ids
+
+
 def verificar_cross_reference(
     archivo: str,
     codigo_funcion: str,
     rn_ids: list[str],
     todas_las_funciones: dict[str, list[dict[str, str]]],
 ) -> list[RNCrossError]:
-    """Verifica que las funciones llamadas tambien tengan las RNs."""
+    """Verifica que las funciones llamadas tambien tengan las RNs.
+
+    Logica corregida: solo emite warning si la funcion destino
+    TAMBIEN declara la RN en su CONTRATO. Si la funcion destino
+    no declara esa RN, es responsabilidad exclusiva de la llamante
+    (la regla NO es cross-reference, es local a la llamante).
+
+    ANTES: emitia warning si la cadena de llamadas no tenia el
+    marker, lo cual producia 100+ falsos positivos en iodesk
+    (utilities como get_tickets_para_usuario, render_email_html
+    recibian warnings de RNs que NO implementan).
+    """
     errores: list[RNCrossError] = []
     llamadas = _extraer_llamadas(codigo_funcion)
 
@@ -78,26 +106,40 @@ def verificar_cross_reference(
             defs = todas_las_funciones.get(llamada)
             if not defs:
                 continue
-            
             # Intentar resolver al mismo archivo primero para evitar colisiones
             definicion = None
             for d in defs:
                 if d.get("archivo") == archivo:
                     definicion = d
                     break
-            
+
             if not definicion:
                 definicion = defs[0]
 
-            # Verificar que la funcion destino tenga RN en su codigo
             codigo_destino = definicion.get("codigo", "")
+
+            # FIX: si la funcion destino NO declara esta RN en su CONTRATO,
+            # no es problema de cross-reference. La llamante es responsable
+            # unica de la regla. NO emitir warning.
+            rn_en_contrato_destino = _extraer_rn_ids_de_contrato(codigo_destino)
+            if rn_id not in rn_en_contrato_destino:
+                continue
+
+            # La funcion destino SI declara esta RN. Verificar que tenga
+            # el marker en su cuerpo.
             if not _tiene_rn_en_codigo(codigo_destino, rn_id):
                 errores.append(
                     RNCrossError(
                         archivo=archivo,
                         linea=0,
-                        mensaje=f"'{rn_id}' declarada pero '{llamada}' no la tiene marcada",
-                        sugerencia=f"Agregar '# {rn_id}' en la funcion '{llamada}'",
+                        mensaje=(
+                            f"'{rn_id}' declarada en CONTRATO de '{llamada}' "
+                            f"pero no tiene marker en su cuerpo"
+                        ),
+                        sugerencia=(
+                            f"Agregar '# {rn_id}' en la linea donde se "
+                            f"implementa la regla en '{llamada}'"
+                        ),
                     )
                 )
 

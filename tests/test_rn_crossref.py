@@ -103,37 +103,54 @@ class TestVerificarCrossReference:
     """verificar_cross_reference — logica central F4."""
 
     def test_sin_error_si_destino_tiene_rn(self):
+        """Destino declara RN-001 en CONTRATO y tiene marker → OK."""
         errores = verificar_cross_reference(
             archivo="test.py",
             codigo_funcion="destino()",
             rn_ids=["RN-001"],
             todas_las_funciones={
-                "destino": [{"codigo": "# RN-001", "archivo": "test.py"}],
+                "destino": [{"codigo": "def destino():\n    '''CONTRATO:\n    rn: [RN-001]\n    '''\n    # RN-001", "archivo": "test.py"}],
             },
         )
         assert errores == []
 
-    def test_error_si_destino_no_tiene_rn(self):
+    def test_error_si_destino_declara_rn_pero_sin_marker(self):
+        """Destino declara RN-001 en CONTRATO pero no tiene marker en body → error."""
         errores = verificar_cross_reference(
             archivo="test.py",
             codigo_funcion="destino()",
             rn_ids=["RN-001"],
             todas_las_funciones={
-                "destino": [{"codigo": "x = 1", "archivo": "test.py"}],
+                "destino": [{"codigo": "def destino():\n    '''CONTRATO:\n    rn: [RN-001]\n    '''\n    x = 1", "archivo": "test.py"}],
             },
         )
         assert len(errores) == 1
         assert "RN-001" in errores[0].mensaje
         assert "destino" in errores[0].mensaje
 
+    def test_sin_error_si_destino_NO_declara_rn(self):
+        """FIX: si destino NO declara la RN, no es cross-reference problem.
+        La llamante es responsable unica de la regla."""
+        errores = verificar_cross_reference(
+            archivo="test.py",
+            codigo_funcion="destino()",
+            rn_ids=["RN-001"],
+            todas_las_funciones={
+                "destino": [{"codigo": "def destino():\n    '''CONTRATO:\n    rn: []\n    '''\n    x = 1", "archivo": "test.py"}],
+            },
+        )
+        assert errores == [], (
+            f"No deberia haber error si destino no declara la RN. Got: {errores}"
+        )
+
     def test_error_con_varias_rns(self):
-        """Destino tiene RN-001 pero no RN-002 → solo error RN-002."""
+        """Destino declara ambas RNs en CONTRATO pero solo tiene marker para una."""
         errores = verificar_cross_reference(
             archivo="test.py",
             codigo_funcion="destino()",
             rn_ids=["RN-001", "RN-002"],
             todas_las_funciones={
-                "destino": [{"codigo": "# RN-001", "archivo": "test.py"}],
+                "destino": [{"codigo": "def destino():\n    '''CONTRATO:\n    rn: [RN-001, RN-002]\n    '''\n    # RN-001", "archivo": "test.py"}],
             },
         )
         assert len(errores) == 1
