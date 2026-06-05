@@ -1305,6 +1305,8 @@ def check_proyecto(
                                 sugerencia=ex.sugerencia,
                             )
                         )
+                # Suprimir warnings de cross-reference según docpact.toml
+                rf.hallazgos = _suprimir_hallazgos(rf.hallazgos, config)
 
         # Module boundary check: verificar dependencias entre módulos
         if config.modules:
