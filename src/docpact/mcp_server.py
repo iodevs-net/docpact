@@ -89,7 +89,7 @@ def _cargar_o_generar_index(project_root: str, force: bool = False) -> dict[str,
     if _embedder is None:
         _embedder = _try_load_embedder()
         if _embedder is not None:
-            logger.info("FastEmbed cargado: BAAI/bge-small-en-v1.5 (búsqueda semántica habilitada)")
+            logger.info("FastEmbed cargado: intfloat/multilingual-e5-large (búsqueda semántica habilitada)")
         else:
             logger.info("FastEmbed no disponible: búsqueda keyword-only")
 

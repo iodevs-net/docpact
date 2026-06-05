@@ -21,10 +21,10 @@ from docpact.checker.rn_registry import cargar_registro
 
 
 def _try_load_embedder() -> Any | None:
-    """Intenta cargar TextEmbedding de FastEmbed con multilingual-e5-small.
+    """Intenta cargar TextEmbedding de FastEmbed con multilingual-e5-large.
 
-    Modelo: intfloat/multilingual-e5-small (384 dims, ONNX, 60+ idiomas).
-    Mejor para retrieval bilingüe (español/inglés) que bge-small-en-v1.5.
+    Modelo: intfloat/multilingual-e5-large (1024 dims, ONNX, multilingual).
+    Mejor calidad que e5-small (384 dims) para retrieval bilingüe.
     Si fastembed no está instalado, retorna None (fallback a keyword).
 
     Returns:
@@ -32,17 +32,8 @@ def _try_load_embedder() -> Any | None:
     """
     try:
         from fastembed import TextEmbedding
-        from fastembed.common.model_description import PoolingType, ModelSource
 
-        TextEmbedding.add_custom_model(
-            model="intfloat/multilingual-e5-small",
-            pooling=PoolingType.MEAN,
-            normalization=True,
-            sources=ModelSource(hf="intfloat/multilingual-e5-small"),
-            dim=384,
-            model_file="onnx/model.onnx",
-        )
-        return TextEmbedding(model_name="intfloat/multilingual-e5-small")
+        return TextEmbedding(model_name="intfloat/multilingual-e5-large")
     except ImportError:
         return None
 
