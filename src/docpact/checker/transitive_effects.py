@@ -39,6 +39,19 @@ def _satisface_efecto(efectos_declarados: set[str], efecto_requerido: str) -> bo
         ],
         "notification": [
             "notification", "notifica", "mensaje", "sms", "push", "alerta"
+        ],
+        "subprocess": [
+            "subprocess", "subproceso", "sub proceso", "exec", "shell", "command",
+            "pipeline", "docker", "ps", "df", "uptime", "hostname", "uname", "nproc",
+            "free", "parted", "ip", "ping", "curl", "wget"
+        ],
+        "file_read": [
+            "file_read", "lectura de archivo", "lee archivo", "abre archivo", "open",
+            "/proc", "/sys", "/etc", "read_text", "read_bytes"
+        ],
+        "http_get": [
+            "http_get", "http get", "peticion http", "request http", "httpx", "requests",
+            "urlopen", "netdata", "api rest", "endpoint"
         ]
     }
 
@@ -49,6 +62,21 @@ def _satisface_efecto(efectos_declarados: set[str], efecto_requerido: str) -> bo
         dec_lower = dec.lower()
         if any(c in dec_lower for c in claves):
             return True
+
+    # FIX: el parser actual devuelve el side_effect completo del callee
+    # (ej: 'subprocess (docker info, hostname, uname)') en vez de solo la
+    # keyword ('subprocess'). En ese caso, hay que extraer la keyword
+    # (primera palabra antes del '(' o espacio) y buscar en el mapeo.
+    if "(" in efecto_requerido:
+        keyword = efecto_requerido.split("(", 1)[0].strip().lower()
+    else:
+        keyword = efecto_requerido.split(" ", 1)[0].strip().lower()
+    if keyword in mapeo_claves:
+        claves = mapeo_claves[keyword]
+        for dec in efectos_declarados:
+            dec_lower = dec.lower()
+            if any(c in dec_lower for c in claves):
+                return True
 
     return False
 

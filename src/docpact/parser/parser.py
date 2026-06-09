@@ -20,6 +20,59 @@ from typing import Any
 from docpact.parser.lexer import TipoToken, Token
 
 
+def _split_respetando_parentesis(valor: str) -> list[str]:
+    """Split por coma que NO rompe comas dentro de parentesis.
+
+    Caso comun: 'subprocess (docker info, hostname, uname), http get a netdata'
+    -> ['subprocess (docker info, hostname, uname)', 'http get a netdata']
+
+    Sin esta logica, un split ingenuo por coma produce 4 items rotos:
+    'subprocess (docker info' / 'hostname' / 'uname)' / 'http get a netdata',
+    rompiendo el validador de efectos transitivos.
+
+    Reglas:
+      - Comas dentro de (...) NO son separadores.
+      - Comas fuera de (...) SI son separadores.
+      - Comillas simples/dobles dentro de (...) tampoco son separadores
+        (futuro: si alguien declara 'subprocess (echo "a, b")', se respeta).
+    """
+    items: list[str] = []
+    buffer: list[str] = []
+    nivel = 0  # nivel de parentesis
+    en_string: str | None = None  # quote abierto actual
+
+    for char in valor:
+        if en_string is not None:
+            # Dentro de un string, todo es literal
+            buffer.append(char)
+            if char == en_string:
+                en_string = None
+            continue
+        if char in ('"', "'"):
+            en_string = char
+            buffer.append(char)
+        elif char == "(":
+            nivel += 1
+            buffer.append(char)
+        elif char == ")":
+            nivel = max(0, nivel - 1)
+            buffer.append(char)
+        elif char == "," and nivel == 0:
+            # Coma separadora (no dentro de parentesis)
+            item = "".join(buffer).strip()
+            if item:
+                items.append(item)
+            buffer = []
+        else:
+            buffer.append(char)
+
+    # Ultimo item
+    item = "".join(buffer).strip()
+    if item:
+        items.append(item)
+    return items
+
+
 def parsear(tokens: list[Token]) -> tuple[Contrato, list[ErrorParser]]:
     """Convierte tokens de un bloque CONTRATO en un modelo Contrato.
 
@@ -158,7 +211,10 @@ def _parsear_campo_simple(
     if nombre == "side_effects":
         if valor.lower() == "ninguno":
             return idx + 1, [], None, "", None, None
-        items = [v.strip() for v in valor.split(",")]
+        # FIX: split por coma que respeta parentesis. Si una coma esta
+        # dentro de (...), no es separador. Caso: 'subprocess (docker
+        # info, hostname, uname), http get' debe producir 2 items, no 4.
+        items = _split_respetando_parentesis(valor)
         se_list = [SideEffect(descripcion=item) for item in items if item]
         return idx + 1, se_list, None, "", None, None
 
