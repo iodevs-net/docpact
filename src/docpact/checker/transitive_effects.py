@@ -184,7 +184,7 @@ def check_transitive_effects(
 
         if contrato_idx and contrato_idx.side_effects:
             # Filtrar si tienen efectos que no sean "ninguno"
-            efectos_callee = [e for e in contrato_idx.side_effects if e != "ninguno"]
+            efectos_callee = [e for e in contrato_idx.side_effects if e not in ("ninguno", "service_delegation")]
             if efectos_callee:
                 llamadas_con_efectos[llamada] = efectos_callee
 
