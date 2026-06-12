@@ -17,6 +17,9 @@ from docpact.models.contrato import Contrato, ErrorParser
 
 def _satisface_efecto(efectos_declarados: set[str], efecto_requerido: str) -> bool:
     """Verifica de forma semántica si el efecto requerido está cubierto por las descripciones."""
+    # service_delegation = delegation marker — always satisfies
+    if "service_delegation" in efectos_declarados:
+        return True
     # Si la categoría técnica exacta está declarada, es un match directo
     if efecto_requerido in efectos_declarados:
         return True
