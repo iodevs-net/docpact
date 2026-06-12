@@ -112,39 +112,52 @@ def main(argv: list[str] | None = None) -> int:
 
     # ├─ lint (análisis estático puro — sin pytest)
     lint_parser = subparsers.add_parser(
-        "lint", help="Análisis estático puro de CONTRATOS (sin pytest, ideal para pre-commit)"
+        "lint",
+        help="Análisis estático puro de CONTRATOS (sin pytest, ideal para pre-commit)",
     )
     lint_parser.add_argument("path", type=str, help="Archivo o directorio a verificar")
     lint_parser.add_argument(
-        "--strict", action="store_true",
+        "--strict",
+        action="store_true",
         help="Falla si hay funciones públicas sin CONTRATO",
     )
     lint_parser.add_argument(
-        "--config", type=str, default=None,
+        "--config",
+        type=str,
+        default=None,
         help="Ruta al archivo de configuración docpact.toml",
     )
     lint_parser.add_argument(
-        "--diff", action="store_true",
+        "--diff",
+        action="store_true",
         help="Solo verificar archivos modificados vs HEAD (git diff)",
     )
     lint_parser.add_argument(
-        "--min-score", type=int, default=0,
+        "--min-score",
+        type=int,
+        default=0,
         help="DEPRECADO: usar --max-rns-fake y --max-rns-huerfanas. Falla si el score (vanity metric) es menor",
     )
     lint_parser.add_argument(
-        "--max-rns-fake", type=int, default=0,
+        "--max-rns-fake",
+        type=int,
+        default=0,
         help="Máximo de RNs fake permitidas. Falla si se supera. Default: 0",
     )
     lint_parser.add_argument(
-        "--max-rns-huerfanas", type=int, default=None,
+        "--max-rns-huerfanas",
+        type=int,
+        default=None,
         help="Máximo de RNs huerfanas permitidas. Falla si se supera. Default: no falla",
     )
     lint_parser.add_argument(
-        "--show-legacy-score", action="store_true",
+        "--show-legacy-score",
+        action="store_true",
         help="Muestra el score AI-Native deprecado (0-100). Por default se ocultan las métricas vanidosas",
     )
     lint_parser.add_argument(
-        "--fix", action="store_true",
+        "--fix",
+        action="store_true",
         help="Auto-genera CONTRATOs para funciones sin ninguno (--strict implícito)",
     )
 
@@ -154,7 +167,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     test_parser.add_argument("path", type=str, help="Archivo o directorio a verificar")
     test_parser.add_argument(
-        "--config", type=str, default=None,
+        "--config",
+        type=str,
+        default=None,
         help="Ruta al archivo de configuración docpact.toml",
     )
 
@@ -163,11 +178,15 @@ def main(argv: list[str] | None = None) -> int:
         "index", help="Genera índice pre-calculado para el MCP server"
     )
     index_parser.add_argument(
-        "path", type=str, nargs="?", default=".",
+        "path",
+        type=str,
+        nargs="?",
+        default=".",
         help="Raíz del proyecto (default: directorio actual)",
     )
     index_parser.add_argument(
-        "--force", action="store_true",
+        "--force",
+        action="store_true",
         help="Regenerar índice aunque ya exista",
     )
 
@@ -179,7 +198,8 @@ def main(argv: list[str] | None = None) -> int:
         "files", nargs="*", help="Archivos a validar (git staged files si se omite)"
     )
     validate_parser.add_argument(
-        "--staged", action="store_true",
+        "--staged",
+        action="store_true",
         help="Usar archivos staged de git (default si no se pasan archivos)",
     )
 
@@ -188,7 +208,9 @@ def main(argv: list[str] | None = None) -> int:
         "mcp", help="Inicia el MCP server para agentes (JSON-RPC sobre stdio)"
     )
     mcp_parser.add_argument(
-        "--project-root", type=str, default=".",
+        "--project-root",
+        type=str,
+        default=".",
         help="Raíz del proyecto (default: directorio actual)",
     )
 
@@ -198,11 +220,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Diagnostica por qué las tools MCP no cargan en el host (stdio, wrapper, etc.)",
     )
     doctor_parser.add_argument(
-        "--project-root", type=str, default=".",
+        "--project-root",
+        type=str,
+        default=".",
         help="Raíz del proyecto (default: directorio actual)",
     )
     doctor_parser.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="Output estructurado en JSON (para tooling y agentes)",
     )
 
@@ -212,14 +237,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Detecta tests placeholder (cuerpo vacio, assert True, etc.)",
     )
     quality_parser.add_argument(
-        "--project-root", type=str, default=".",
+        "--project-root",
+        type=str,
+        default=".",
         help="Raíz del proyecto (default: directorio actual)",
     )
     quality_parser.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="Output estructurado en JSON",
     )
-
 
     # ├─ install-mcp
     install_parser = subparsers.add_parser(
@@ -227,19 +254,26 @@ def main(argv: list[str] | None = None) -> int:
         help="Configura docpact como MCP server en el host del agent (OMP/Claude Code)",
     )
     install_parser.add_argument(
-        "--project-root", type=str, default=".",
+        "--project-root",
+        type=str,
+        default=".",
         help="Raíz del proyecto (default: directorio actual)",
     )
     install_parser.add_argument(
-        "--wrapper", type=str, default=None,
+        "--wrapper",
+        type=str,
+        default=None,
         help="Path al wrapper script (default: scripts/docpact-mcp-wrapper.sh en project-root)",
     )
     install_parser.add_argument(
-        "--host", type=str, default=None,
+        "--host",
+        type=str,
+        default=None,
         help="Forzar host ('omp', 'omp_project', 'claude_code', 'project'). Default: autodetectar",
     )
     install_parser.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="Output estructurado en JSON",
     )
 
@@ -249,19 +283,25 @@ def main(argv: list[str] | None = None) -> int:
         help="Sugiere bloques [docpact.rn_patrones.RN-XXX] para RNs sin validador",
     )
     suggest_parser.add_argument(
-        "--project-root", type=str, default=".",
+        "--project-root",
+        type=str,
+        default=".",
         help="Raíz del proyecto a analizar (default: directorio actual)",
     )
     suggest_parser.add_argument(
-        "--apply", action="store_true",
+        "--apply",
+        action="store_true",
         help="Escribir las sugerencias a docpact.toml (default: dry-run)",
     )
     suggest_parser.add_argument(
-        "--min-confidence", type=float, default=0.5,
+        "--min-confidence",
+        type=float,
+        default=0.5,
         help="Confidence mínima para incluir una sugerencia (0-1, default: 0.5)",
     )
     suggest_parser.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="Output estructurado en JSON",
     )
 
@@ -271,20 +311,42 @@ def main(argv: list[str] | None = None) -> int:
         help="Delta entre REGISTRO.md (reglas declaradas) y código real (implementación)",
     )
     report_parser.add_argument(
-        "--project-root", type=str, default=".",
+        "--project-root",
+        type=str,
+        default=".",
         help="Raíz del proyecto (default: directorio actual)",
     )
     report_parser.add_argument(
-        "--registro", type=str, default=None,
+        "--registro",
+        type=str,
+        default=None,
         help="Path al REGISTRO.md (default: docs/reglas-del-negocio/REGISTRO.md)",
     )
     report_parser.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="Output estructurado en JSON (para agentes)",
     )
     report_parser.add_argument(
-        "--ci", action="store_true",
+        "--ci",
+        action="store_true",
         help="Modo CI: falla si RNs con marcador no tienen test",
+    )
+    # ├─ traceability — RN Traceability Matrix
+    traceability_parser = subparsers.add_parser(
+        "traceability",
+        help="Matriz de trazabilidad RN: declaraciones, tests y cobertura",
+    )
+    traceability_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help="Raíz del proyecto (default: directorio actual)",
+    )
+    traceability_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output estructurado en JSON",
     )
 
     # ├─ llm-judge
@@ -296,11 +358,15 @@ def main(argv: list[str] | None = None) -> int:
         "test_file", type=str, help="Path al archivo de test (.py)"
     )
     llm_judge_parser.add_argument(
-        "--rn-descripcion", type=str, required=True,
+        "--rn-descripcion",
+        type=str,
+        required=True,
         help="Descripcion de la regla de negocio que el test deberia verificar",
     )
     llm_judge_parser.add_argument(
-        "--json", action="store_true", help="Output estructurado en JSON",
+        "--json",
+        action="store_true",
+        help="Output estructurado en JSON",
     )
     # ├─ init  (Fase 4 — placeholder)
     init_parser = subparsers.add_parser(
@@ -314,7 +380,8 @@ def main(argv: list[str] | None = None) -> int:
         "--batch", action="store_true", help="Procesar todo el directorio"
     )
     init_parser.add_argument(
-        "--force", action="store_true",
+        "--force",
+        action="store_true",
         help="Forzar generación incluso si la función tiene docstring sin CONTRATO",
     )
 
@@ -350,11 +417,10 @@ def main(argv: list[str] | None = None) -> int:
     fix_parser = subparsers.add_parser(
         "fix", help="Auto-corrige warnings de firma en CONTRATOS"
     )
+    fix_parser.add_argument("path", type=str, help="Archivo o directorio a corregir")
     fix_parser.add_argument(
-        "path", type=str, help="Archivo o directorio a corregir"
-    )
-    fix_parser.add_argument(
-        "--diff", action="store_true",
+        "--diff",
+        action="store_true",
         help="Solo afectar archivos modificados vs HEAD (git diff)",
     )
 
@@ -394,6 +460,9 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_fix(args)
     elif args.command == "llm-judge":
         return _cmd_llm_judge(args)
+    elif args.command == "traceability":
+        return _cmd_traceability(args)
+
     else:
         parser.print_help()
         return 0
@@ -604,15 +673,19 @@ def _cmd_check(args: argparse.Namespace) -> int:
     if getattr(args, "no_runtime", False):
         config.run_runtime = False
         import os as _os
+
         _os.environ["DOCPACT_NO_RUNTIME"] = "1"
 
     resultado = check_proyecto(args.path, config, diff_only=args.diff)
 
     # Auto-check pasivo MCP (1 linea): silente si OK, warn si falta algo
     from docpact.mcp_server import diagnostico as _diag
+
     _d = _diag()
     if not _d["index_exists"]:
-        logger.warning("docpact MCP no esta listo: index no existe — corre `docpact index`")
+        logger.warning(
+            "docpact MCP no esta listo: index no existe — corre `docpact index`"
+        )
     elif not _d["docpact_in_PATH"]:
         logger.warning("docpact MCP no esta listo: binario no esta en PATH")
     # Salida
@@ -661,18 +734,30 @@ def _cmd_check(args: argparse.Namespace) -> int:
         if rns_fake > 0:
             print(f"   🚨 RNs fake (en CONTRATO pero NO en REGISTRO): {rns_fake}")
             for fake in resultado.rns_fake[:5]:
-                arch_short = fake.archivo.rsplit("/", 1)[-1] if "/" in fake.archivo else fake.archivo
-                print(f"      └─ {fake.rn_id} en {arch_short}:{fake.linea} ({fake.funcion})")
+                arch_short = (
+                    fake.archivo.rsplit("/", 1)[-1]
+                    if "/" in fake.archivo
+                    else fake.archivo
+                )
+                print(
+                    f"      └─ {fake.rn_id} en {arch_short}:{fake.linea} ({fake.funcion})"
+                )
             if len(resultado.rns_fake) > 5:
-                print(f"      └─ ... y {len(resultado.rns_fake) - 5} más (usar --fix o revisar manualmente)")
+                print(
+                    f"      └─ ... y {len(resultado.rns_fake) - 5} más (usar --fix o revisar manualmente)"
+                )
         if rns_huerfanas > 0:
-            print(f"   📋 RNs huerfanas (en REGISTRO pero NO en CONTRATO): {rns_huerfanas}")
+            print(
+                f"   📋 RNs huerfanas (en REGISTRO pero NO en CONTRATO): {rns_huerfanas}"
+            )
             for h in resultado.rns_huerfanas[:5]:
                 print(f"      └─ {h.rn_id}: {h.descripcion[:80]}")
             if len(resultado.rns_huerfanas) > 5:
                 print(f"      └─ ... y {len(resultado.rns_huerfanas) - 5} más")
     if rns_placeholders > 0:
-        print(f"   🚫 Placeholders excluidos (RN-XXX, RN-NO-APLICA, etc): {rns_placeholders}")
+        print(
+            f"   🚫 Placeholders excluidos (RN-XXX, RN-NO-APLICA, etc): {rns_placeholders}"
+        )
     if sin_contrato > 0:
         print(f"   ❌ Funciones públicas sin CONTRATO: {sin_contrato}")
 
@@ -682,16 +767,22 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
     # ── Falla por métricas honestas (gating) ──
     if rns_fake > args.max_rns_fake:
-        print(f"\n❌ {rns_fake} RNs fake superan el máximo permitido ({args.max_rns_fake})")
+        print(
+            f"\n❌ {rns_fake} RNs fake superan el máximo permitido ({args.max_rns_fake})"
+        )
         return 1
     if args.max_rns_huerfanas is not None and rns_huerfanas > args.max_rns_huerfanas:
-        print(f"\n❌ {rns_huerfanas} RNs huerfanas superan el máximo permitido ({args.max_rns_huerfanas})")
+        print(
+            f"\n❌ {rns_huerfanas} RNs huerfanas superan el máximo permitido ({args.max_rns_huerfanas})"
+        )
         return 1
 
     # ── Falla por score legacy (compat) ──
     if args.min_score and score < args.min_score:
         print(f"\n❌ Score legacy {score} menor al mínimo requerido ({args.min_score})")
-        print(f"   ADVERTENCIA: --min-score usa el score DEPRECADO. Migrar a --max-rns-fake.")
+        print(
+            f"   ADVERTENCIA: --min-score usa el score DEPRECADO. Migrar a --max-rns-fake."
+        )
         return 1
 
     # Auto-generar CONTRATOs si --fix está activo
@@ -789,7 +880,9 @@ def _cmd_lint(args: argparse.Namespace) -> int:
     if args.strict or getattr(args, "fix", False):
         config.strict = True
 
-    resultado = check_proyecto(args.path, config, diff_only=getattr(args, "diff", False))
+    resultado = check_proyecto(
+        args.path, config, diff_only=getattr(args, "diff", False)
+    )
 
     tf = resultado.total_funciones
     tc = resultado.funciones_con_contrato
@@ -836,9 +929,13 @@ def _cmd_lint(args: argparse.Namespace) -> int:
         if rns_fake > 0:
             print(f"   🚨 RNs fake (en CONTRATO pero NO en REGISTRO): {rns_fake}")
         if rns_huerfanas > 0:
-            print(f"   📋 RNs huerfanas (en REGISTRO pero NO en CONTRATO): {rns_huerfanas}")
+            print(
+                f"   📋 RNs huerfanas (en REGISTRO pero NO en CONTRATO): {rns_huerfanas}"
+            )
     if rns_placeholders > 0:
-        print(f"   🚫 Placeholders excluidos (RN-XXX, RN-NO-APLICA, etc): {rns_placeholders}")
+        print(
+            f"   🚫 Placeholders excluidos (RN-XXX, RN-NO-APLICA, etc): {rns_placeholders}"
+        )
     if sin_contrato > 0:
         print(f"   ❌ Funciones públicas sin CONTRATO: {sin_contrato}")
 
@@ -853,19 +950,24 @@ def _cmd_lint(args: argparse.Namespace) -> int:
         return 1
     max_huerfanas = getattr(args, "max_rns_huerfanas", None)
     if max_huerfanas is not None and rns_huerfanas > max_huerfanas:
-        print(f"\n❌ {rns_huerfanas} RNs huerfanas superan el máximo permitido ({max_huerfanas})")
+        print(
+            f"\n❌ {rns_huerfanas} RNs huerfanas superan el máximo permitido ({max_huerfanas})"
+        )
         return 1
 
     # ── Falla por score legacy (compat) ──
     min_score = getattr(args, "min_score", 0)
     if min_score and score < min_score:
         print(f"\n❌ Score legacy {score} menor al mínimo requerido ({min_score})")
-        print(f"   ADVERTENCIA: --min-score usa el score DEPRECADO. Migrar a --max-rns-fake.")
+        print(
+            f"   ADVERTENCIA: --min-score usa el score DEPRECADO. Migrar a --max-rns-fake."
+        )
         return 1
 
     # Auto-fix si --fix
     if getattr(args, "fix", False):
         from docpact.cli.init import init_function
+
         _generados = 0
         for archivo_result in resultado.archivos:
             for func in archivo_result.funciones:
@@ -875,7 +977,9 @@ def _cmd_lint(args: argparse.Namespace) -> int:
                             Path(archivo_result.archivo), func.nombre, safe=True
                         )
                         if exito:
-                            print(f"  ✅ Auto-generado: {func.nombre} ({archivo_result.archivo})")
+                            print(
+                                f"  ✅ Auto-generado: {func.nombre} ({archivo_result.archivo})"
+                            )
                             _generados += 1
                     except Exception:
                         pass
@@ -993,6 +1097,7 @@ def _cmd_fix(args: argparse.Namespace) -> int:
         archivos = [path]
     elif path.is_dir():
         import os
+
         archivos = []
         for root, _dirs, files in os.walk(str(path)):
             for f in files:
@@ -1009,7 +1114,9 @@ def _cmd_fix(args: argparse.Namespace) -> int:
         try:
             r = fix_file(archivo)
             if r:
-                print(f"  ✅ {archivo.relative_to(path) if path.is_dir() else archivo.name}")
+                print(
+                    f"  ✅ {archivo.relative_to(path) if path.is_dir() else archivo.name}"
+                )
                 total += r
         except Exception as e:
             print(f"  ⚠️ {archivo}: {e}", file=sys.stderr)
@@ -1044,7 +1151,7 @@ def _cmd_index(args: argparse.Namespace) -> int:
     print(f"   Con RNs: {stats['funciones_con_rn']}")
     print(f"   RNs: {stats['total_rns']}")
     print(f"   RNs con test: {stats['rns_con_test']}")
-    print(f"   Tamaño: {os.path.getsize(path)/1024:.1f} KB")
+    print(f"   Tamaño: {os.path.getsize(path) / 1024:.1f} KB")
     return 0
 
 
@@ -1065,7 +1172,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         try:
             result = subprocess.run(
                 ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             files = [f for f in result.stdout.strip().split("\n") if f.endswith(".py")]
         except Exception:
@@ -1093,9 +1202,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
         return 0  # No bloquear si no hay índice
 
     # Leer config para decidir si marker-honesty es bloqueante
-    config = DocpactConfig.desde_toml(
-        os.path.join(project_root, "docpact.toml")
-    )
+    config = DocpactConfig.desde_toml(os.path.join(project_root, "docpact.toml"))
 
     errores = []
     warnings = []
@@ -1119,11 +1226,13 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
             rn_info = index["rns"].get(rn_id)
             if not rn_info:
-                errores.append({
-                    "archivo": filepath,
-                    "rn": rn_id,
-                    "mensaje": f"RN '{rn_id}' no existe en REGISTRO.md",
-                })
+                errores.append(
+                    {
+                        "archivo": filepath,
+                        "rn": rn_id,
+                        "mensaje": f"RN '{rn_id}' no existe en REGISTRO.md",
+                    }
+                )
 
         # ─── Marker honesty check (pre-commit enforcement) ───
         # Detecta markers # RN-XXX en líneas de delegación.
@@ -1149,7 +1258,11 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
             # Check 1: marker en línea de delegación
             honesty_errors = check_marker_honesty(
-                node, contrato_rns, content, node.name, enabled=True,
+                node,
+                contrato_rns,
+                content,
+                node.name,
+                enabled=True,
             )
             for e in honesty_errors:
                 msg = f"{filepath}:{e.linea}: {e.mensaje}"
@@ -1157,7 +1270,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
             # Check 2: concentración sospechosa
             concentrado = check_marcador_concentrado(
-                contrato_rns, node.name, enabled=True,
+                contrato_rns,
+                node.name,
+                enabled=True,
             )
             if concentrado is not None:
                 msg = f"{filepath}: {concentrado.mensaje}"
@@ -1251,7 +1366,8 @@ def _cmd_install_mcp(args: argparse.Namespace) -> int:
 
     project_root = _P(args.project_root).resolve()
     wrapper = (
-        _P(args.wrapper).resolve() if args.wrapper
+        _P(args.wrapper).resolve()
+        if args.wrapper
         else project_root / "scripts" / "docpact-mcp-wrapper.sh"
     )
     host = args.host or detectar_host()
@@ -1292,10 +1408,13 @@ def _cmd_config_suggest(args: argparse.Namespace) -> int:
             sugerencias.append(sug)
 
     if getattr(args, "json", False):
-        print(_json.dumps(
-            {"ok": True, "count": len(sugerencias), "sugerencias": sugerencias},
-            indent=2, ensure_ascii=False,
-        ))
+        print(
+            _json.dumps(
+                {"ok": True, "count": len(sugerencias), "sugerencias": sugerencias},
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
     else:
         if not sugerencias:
             print("OK — no se encontraron sugerencias aplicables")
@@ -1312,6 +1431,7 @@ def _cmd_config_suggest(args: argparse.Namespace) -> int:
 
     if args.apply:
         from docpact.config import DocpactConfig
+
         config_path = root / "docpact.toml"
         bloques = "\n".join(s["bloque_toml"] for s in sugerencias)
         if config_path.exists():
@@ -1327,12 +1447,18 @@ def _cmd_config_suggest(args: argparse.Namespace) -> int:
 
     return 0
 
+
 def _cmd_report(args: argparse.Namespace) -> int:
     """Genera reporte de delta REGISTRO.md vs código real."""
     import os
     from pathlib import Path as _P
 
-    from docpact.reporter import generar_reporte, generar_tabla, generar_json, validar_ci
+    from docpact.reporter import (
+        generar_reporte,
+        generar_tabla,
+        generar_json,
+        validar_ci,
+    )
 
     project_root = _P(os.path.abspath(args.project_root))
     registro = args.registro
@@ -1360,6 +1486,7 @@ def _cmd_report(args: argparse.Namespace) -> int:
 
     return 0
 
+
 def _cmd_llm_judge(args: argparse.Namespace) -> int:
     """Evalua si un test verifica la regla usando un LLM."""
     import json as _json
@@ -1378,14 +1505,23 @@ def _cmd_llm_judge(args: argparse.Namespace) -> int:
     )
 
     if score is None:
-        print("❌ no se pudo obtener evaluacion del LLM (api key, error HTTP, o respuesta no parseable)")
+        print(
+            "❌ no se pudo obtener evaluacion del LLM (api key, error HTTP, o respuesta no parseable)"
+        )
         return 1
 
     if getattr(args, "json", False):
-        print(_json.dumps(
-            {"verifica": score.verifica, "confidence": score.confidence, "razon": score.razon},
-            indent=2, ensure_ascii=False,
-        ))
+        print(
+            _json.dumps(
+                {
+                    "verifica": score.verifica,
+                    "confidence": score.confidence,
+                    "razon": score.razon,
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
     else:
         verdict = "✅ VERIFICA" if score.verifica else "❌ NO VERIFICA"
         print(f"{verdict} (confidence: {score.confidence:.2f})")
@@ -1398,7 +1534,9 @@ def _cmd_llm_judge(args: argparse.Namespace) -> int:
         result_json = {
             "ok": result["error"] is None,
             "host": result["host"],
-            "config_path": str(result["config_path"]) if result["config_path"] else None,
+            "config_path": str(result["config_path"])
+            if result["config_path"]
+            else None,
             "wrapper_verified": result["wrapper_verified"],
             "error": result["error"],
         }
@@ -1417,6 +1555,7 @@ def _cmd_llm_judge(args: argparse.Namespace) -> int:
 
     return 0 if result["error"] is None else 1
 
+
 def _cmd_test_quality(args: argparse.Namespace) -> int:
     """Detecta tests placeholder en tests/rn/. Sale 1 si hay issues, 0 si OK."""
     from docpact.checker.rn_test_checker import check_rn_test_quality
@@ -1427,8 +1566,13 @@ def _cmd_test_quality(args: argparse.Namespace) -> int:
     issues = check_rn_test_quality(root)
     if getattr(args, "json", False):
         out = [{"tipo": i.tipo, "mensaje": i.mensaje, "linea": i.linea} for i in issues]
-        print(_json.dumps({"ok": not issues, "count": len(issues), "issues": out},
-                          indent=2, ensure_ascii=False))
+        print(
+            _json.dumps(
+                {"ok": not issues, "count": len(issues), "issues": out},
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
     else:
         if not issues:
             print("OK — todos los tests en tests/rn/ son reales")
@@ -1472,6 +1616,33 @@ def _cmd_init(args: argparse.Namespace) -> int:
     else:
         print("Usa --function <nombre> o --batch")
         return 1
+
+
+def _cmd_traceability(args: argparse.Namespace) -> int:
+    """Comando traceability: genera matriz de trazabilidad RN."""
+    from pathlib import Path as _P
+    from docpact.checker.rn_traceability import build_traceability, print_traceability
+    import json as _json
+
+    root = _P(args.project_root).resolve()
+    matrix = build_traceability(root)
+
+    if getattr(args, "json", False):
+        print(
+            _json.dumps(
+                matrix,
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+    else:
+        print_traceability(matrix)
+
+    # Exit code: 1 if any RNs are ORPHAN or DECLARED_ONLY, 0 otherwise
+    problematic = sum(
+        1 for entry in matrix.values() if entry["status"] in ("ORPHAN", "DECLARED_ONLY")
+    )
+    return 1 if problematic else 0
 
 
 def _es_excluido(path: Path) -> bool:

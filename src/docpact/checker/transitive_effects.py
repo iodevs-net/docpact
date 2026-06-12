@@ -24,35 +24,99 @@ def _satisface_efecto(efectos_declarados: set[str], efecto_requerido: str) -> bo
     # Mapeo semántico en base a palabras clave (soporta español)
     mapeo_claves = {
         "db_write": [
-            "db_write", "bd", "base de datos", "crea", "guarda", "actualiza",
-            "registra", "elimina", "anula", "insert", "update", "delete",
-            "save", "persiste", "escribe", "modifica", "transaccion", "atomic"
+            "db_write",
+            "bd",
+            "base de datos",
+            "crea",
+            "guarda",
+            "actualiza",
+            "registra",
+            "elimina",
+            "anula",
+            "insert",
+            "update",
+            "delete",
+            "save",
+            "persiste",
+            "escribe",
+            "modifica",
+            "transaccion",
+            "atomic",
         ],
         "email": [
-            "email", "correo", "notifica", "mensaje", "mail", "send_mail", "destinatario"
+            "email",
+            "correo",
+            "notifica",
+            "mensaje",
+            "mail",
+            "send_mail",
+            "destinatario",
         ],
-        "audit": [
-            "audit", "bitacora", "audita", "log", "historial", "evento"
-        ],
+        "audit": ["audit", "bitacora", "audita", "log", "historial", "evento"],
         "external": [
-            "external", "externo", "api", "http", "request", "httpx", "urllib", "servicio"
+            "external",
+            "externo",
+            "api",
+            "http",
+            "request",
+            "httpx",
+            "urllib",
+            "servicio",
         ],
         "notification": [
-            "notification", "notifica", "mensaje", "sms", "push", "alerta"
+            "notification",
+            "notifica",
+            "mensaje",
+            "sms",
+            "push",
+            "alerta",
         ],
         "subprocess": [
-            "subprocess", "subproceso", "sub proceso", "exec", "shell", "command",
-            "pipeline", "docker", "ps", "df", "uptime", "hostname", "uname", "nproc",
-            "free", "parted", "ip", "ping", "curl", "wget"
+            "subprocess",
+            "subproceso",
+            "sub proceso",
+            "exec",
+            "shell",
+            "command",
+            "pipeline",
+            "docker",
+            "ps",
+            "df",
+            "uptime",
+            "hostname",
+            "uname",
+            "nproc",
+            "free",
+            "parted",
+            "ip",
+            "ping",
+            "curl",
+            "wget",
         ],
         "file_read": [
-            "file_read", "lectura de archivo", "lee archivo", "abre archivo", "open",
-            "/proc", "/sys", "/etc", "read_text", "read_bytes"
+            "file_read",
+            "lectura de archivo",
+            "lee archivo",
+            "abre archivo",
+            "open",
+            "/proc",
+            "/sys",
+            "/etc",
+            "read_text",
+            "read_bytes",
         ],
         "http_get": [
-            "http_get", "http get", "peticion http", "request http", "httpx", "requests",
-            "urlopen", "netdata", "api rest", "endpoint"
-        ]
+            "http_get",
+            "http get",
+            "peticion http",
+            "request http",
+            "httpx",
+            "requests",
+            "urlopen",
+            "netdata",
+            "api rest",
+            "endpoint",
+        ],
     }
 
     claves = mapeo_claves.get(efecto_requerido, [efecto_requerido])
@@ -100,6 +164,9 @@ def check_transitive_effects(
     llamadas = _extraer_llamadas(node)
 
     efectos_declarados = {s.descripcion.lower().strip() for s in contrato.side_effects}
+    # service_delegation = 'I delegate, trust my callees' — skip transitive check
+    if "service_delegation" in efectos_declarados:
+        return []
     # Si declaró side_effects o heredó explícitamente, los metemos en un conjunto.
     # Si está vacío, representa "ninguno"
 
