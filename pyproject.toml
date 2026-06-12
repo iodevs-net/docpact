@@ -16,10 +16,12 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
+yaml = ["pyyaml>=6"]
 dev = [
     "pytest>=7",
     "pytest-cov>=4",
     "jsonschema>=4",
+    "pyyaml>=6",
 ]
 typecheck = [
     "mypy>=1",

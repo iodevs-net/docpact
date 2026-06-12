@@ -98,28 +98,30 @@ def _validar_state_transition(
     spec: dict,
     contexto: dict,
 ) -> list[ErrorParser]:
-    """Valida que una matriz/dict de transiciones de estado contenga la transición esperada.
+    """Valida que una matriz de transiciones contenga la transicion esperada.
 
-    Spec esperado:
+    Soporta dos fuentes (mutuamente excluyentes):
+    - YAML: yaml_source + yaml_estados_key (lee directo del YAML, sin duplicacion)
+    - AST: modulo + matriz_attr (busca dict literal en codigo Python)
+
+    Spec YAML:
         type = "state_transition"
-        from_estado = "suspendido"      # estado origen
-        to_cualquiera = ["atender", "asignado"]  # al menos uno debe estar permitido
-        # Alternativa (transición específica):
-        to_estado = "remoto"            # estado destino exacto (opcional)
-        matriz_attr = "TRANSICIONES_PERMITIDAS"  # nombre de la variable/dict en el módulo
-        modulo = "soporte/services/ticket_estados.py"  # path del módulo
+        from_estado = "suspendido"
+        to_cualquiera = ["asignado", "en_traslado"]
+        yaml_source = "soporte/state_machine/tickets.yaml"
+        yaml_estados_key = "estados"  # default: "estados"
 
-    Estrategia:
-    1. Lee el archivo del módulo.
-    2. Parsea AST, busca una asignación a `matriz_attr` que sea dict.
-    3. Verifica que `from_estado` exista en el dict y que sus valores
-       contengan `to_estado` o algún elemento de `to_cualquiera`.
+    Spec AST (legacy):
+        type = "state_transition"
+        from_estado = "suspendido"
+        to_cualquiera = ["asignado"]
+        matriz_attr = "TRANSICIONES_PERMITIDAS"
+        modulo = "soporte/state_machine/builder.py"
     """
     from_estado = spec.get("from_estado")
     to_estado = spec.get("to_estado")
     to_cualquiera = spec.get("to_cualquiera", [])
-    matriz_attr = spec.get("matriz_attr", "TRANSICIONES_PERMITIDAS")
-    modulo_path = spec.get("modulo")
+    yaml_source = spec.get("yaml_source")
 
     if not from_estado or (not to_estado and not to_cualquiera):
         return [
@@ -130,16 +132,151 @@ def _validar_state_transition(
             )
         ]
 
+    # Dispatch: YAML o AST
+    if yaml_source:
+        matriz = _extraer_yaml(yaml_source, spec, contexto, rn_id)
+    else:
+        matriz = _extraer_ast(spec, contexto, rn_id)
+
+    if isinstance(matriz, list):  # Es una lista de errores
+        return matriz
+
+    # Validar transiciones contra la matriz
+    return _validar_transiciones(matriz, from_estado, to_estado, to_cualquiera, rn_id)
+
+
+def _validar_transiciones(
+    matriz: dict,
+    from_estado: str,
+    to_estado: str | None,
+    to_cualquiera: list[str],
+    rn_id: str,
+) -> list[ErrorParser]:
+    """Valida que la transicion exista en la matriz."""
+    matriz_lower = {k.lower(): v for k, v in matriz.items()}
+    from_estado_lower = from_estado.lower()
+
+    transiciones = matriz_lower.get(from_estado_lower, [])
+    if not transiciones:
+        return [
+            ErrorParser(
+                "rn_semantica",
+                f"RN {rn_id}: estado origen '{from_estado}' no existe en la matriz",
+                sugerencia=f"Estados disponibles: {sorted(matriz.keys())}",
+            )
+        ]
+
+    destinos_esperados = [to_estado] if to_estado else to_cualquiera
+    destinos_lower = {d.lower() for d in transiciones}
+    destinos_match = [d for d in destinos_esperados if d.lower() in destinos_lower]
+
+    if not destinos_match:
+        destinos_str = ", ".join(transiciones)
+        return [
+            ErrorParser(
+                "rn_semantica",
+                f"RN {rn_id}: transicion '{from_estado}' -> {destinos_esperados} no encontrada. "
+                f"Permitidos desde '{from_estado}': {destinos_str}",
+                sugerencia=f"Agrega {destinos_esperados} a la matriz de transiciones",
+            )
+        ]
+
+    return []
+
+
+def _extraer_yaml(
+    yaml_source: str,
+    spec: dict,
+    contexto: dict,
+    rn_id: str,
+) -> dict | list[ErrorParser]:
+    """Extrae la matriz de transiciones desde un archivo YAML.
+
+    Formato esperado del YAML:
+        estados:
+          suspendido:
+            transiciones: [asignado, en_traslado, ...]
+    """
+    try:
+        import yaml
+    except ImportError:
+        return [
+            ErrorParser(
+                "rn_semantica",
+                f"RN {rn_id}: yaml_source requiere PyYAML instalado (pip install pyyaml)",
+                sugerencia="Instala PyYAML o usa el path AST (modulo + matriz_attr)",
+            )
+        ]
+
+    yaml_path = Path(yaml_source)
+    if not yaml_path.is_absolute():
+        proyecto_root = contexto.get("proyecto_root")
+        if proyecto_root:
+            yaml_path = Path(proyecto_root) / yaml_source
+
+    if not yaml_path.exists():
+        return [
+            ErrorParser(
+                "rn_semantica",
+                f"RN {rn_id}: yaml_source '{yaml_source}' no encontrado",
+                sugerencia=f"Verifica: {yaml_path}",
+            )
+        ]
+
+    try:
+        data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+    except (yaml.YAMLError, UnicodeDecodeError) as e:
+        return [
+            ErrorParser(
+                "rn_semantica",
+                f"RN {rn_id}: no se pudo parsear YAML: {e}",
+            )
+        ]
+
+    if not isinstance(data, dict):
+        return [
+            ErrorParser(
+                "rn_semantica",
+                f"RN {rn_id}: YAML no es un dict (tipo: {type(data).__name__})",
+            )
+        ]
+
+    estados_key = spec.get("yaml_estados_key", "estados")
+    estados = data.get(estados_key)
+    if not isinstance(estados, dict):
+        return [
+            ErrorParser(
+                "rn_semantica",
+                f"RN {rn_id}: YAML no tiene '{estados_key}' como dict",
+                sugerencia=f"Keys disponibles: {sorted(data.keys())}",
+            )
+        ]
+
+    matriz = {}
+    for estado, config in estados.items():
+        if isinstance(config, dict):
+            matriz[estado] = config.get("transiciones", [])
+    return matriz
+
+
+def _extraer_ast(
+    spec: dict,
+    contexto: dict,
+    rn_id: str,
+) -> dict | list[ErrorParser]:
+    """Extrae la matriz de transiciones desde un dict literal en codigo Python (legacy)."""
+    matriz_attr = spec.get("matriz_attr", "TRANSICIONES_PERMITIDAS")
+    modulo_path = spec.get("modulo")
+
     if not modulo_path:
         return [
             ErrorParser(
                 "rn_semantica",
-                f"RN {rn_id}: state_transition sin 'modulo' (path al archivo con la matriz)",
-                sugerencia="Agrega 'modulo = \"ruta/al/archivo.py\"' al spec",
+                f"RN {rn_id}: state_transition sin 'modulo' ni 'yaml_source'",
+                sugerencia="Agrega 'modulo' o 'yaml_source' al spec",
             )
         ]
 
-    # Resolver path: si es relativo, respecto al proyecto_root en contexto
     modulo = Path(modulo_path)
     if not modulo.is_absolute():
         proyecto_root = contexto.get("proyecto_root")
@@ -150,7 +287,7 @@ def _validar_state_transition(
         return [
             ErrorParser(
                 "rn_semantica",
-                f"RN {rn_id}: módulo '{modulo_path}' no encontrado",
+                f"RN {rn_id}: modulo '{modulo_path}' no encontrado",
                 sugerencia=f"Verifica que el archivo existe: {modulo}",
             )
         ]
@@ -171,54 +308,24 @@ def _validar_state_transition(
         return [
             ErrorParser(
                 "rn_semantica",
-                f"RN {rn_id}: no se encontró dict '{matriz_attr}' en {modulo_path}",
-                sugerencia=f"Verifica que '{matriz_attr}' está definido como dict literal",
+                f"RN {rn_id}: no se encontro dict '{matriz_attr}' en {modulo_path}",
+                sugerencia=f"Verifica que '{matriz_attr}' esta definido como dict literal",
             )
         ]
 
-    # Normalizar keys a lowercase: en runtime `EstadoTicket.ATENDER == "atender"`,
-    # pero a nivel AST solo tenemos el nombre del atributo ("ATENDER"). Comparamos
-    # ambos lados en lowercase para que el spec (`from_estado = "atender"`)
-    # coincida con la key real del dict.
-    matriz_lower = {k.lower(): v for k, v in matriz.items()}
-    from_estado_lower = from_estado.lower()
+    return matriz
 
-    transiciones = matriz_lower.get(from_estado_lower, [])
-    if not transiciones:
-        return [
-            ErrorParser(
-                "rn_semantica",
-                f"RN {rn_id}: estado origen '{from_estado}' no existe en {matriz_attr}",
-                sugerencia=f"Estados disponibles: {sorted(matriz.keys())}",
-            )
-        ]
 
-    destinos_esperados = [to_estado] if to_estado else to_cualquiera
-    destinos_lower = {d.lower() for d in transiciones}
-    destinos_match = [d for d in destinos_esperados if d.lower() in destinos_lower]
 
-    if not destinos_match:
-        destinos_str = (
-            ", ".join(transiciones)
-            if isinstance(transiciones, list)
-            else str(transiciones)
-        )
-        return [
-            ErrorParser(
-                "rn_semantica",
-                f"RN {rn_id}: transición '{from_estado}' → {destinos_esperados} no encontrada "
-                f"en {matriz_attr}. Permitidos desde '{from_estado}': {destinos_str}",
-                sugerencia=f"Agrega {destinos_esperados} a {matriz_attr}['{from_estado}']",
-            )
-        ]
-
-    return []
+# ─────────────────────────────────────────────────────────────────────
+# Helpers AST (usados por _extraer_ast)
+# ─────────────────────────────────────────────────────────────────────
 
 
 def _extraer_dict_ast(tree: ast.AST, nombre: str) -> dict | None:
-    """Extrae un dict literal asignado a `nombre` a nivel de módulo.
+    """Extrae un dict literal asignado a `nombre` a nivel de modulo.
 
-    Soporta tanto `=` (ast.Assign) como asignación anotada `: T = ...`
+    Soporta tanto `=` (ast.Assign) como asignacion anotada `: T = ...`
     (ast.AnnAssign), p.ej. `M: dict[str, list[str]] = {...}`.
     """
     for node in ast.iter_child_nodes(tree):
@@ -238,16 +345,7 @@ def _extraer_dict_ast(tree: ast.AST, nombre: str) -> dict | None:
 
 
 def _dict_literal_a_python(node: ast.Dict) -> dict:
-    """Convierte un ast.Dict con keys/values a dict Python.
-
-    Soporta keys/values que sean string literal (`"x"`), Name (`Foo`) o
-    Attribute (`Mod.X`). Para Attribute, devuelve el último segmento (`X`),
-    que es el patrón típico de `Constante.ATENDER` donde la constante es
-    un string que coincide con su nombre.
-
-    Los valores que sean listas concatenadas con `+` (ast.BinOp(Add)) se
-    aplanan recursivamente para resolver el patrón común `[...] + OTRA_LISTA`.
-    """
+    """Convierte un ast.Dict con keys/values a dict Python."""
     resultado: dict = {}
     for key, value in zip(node.keys, node.values):
         k = _extract_str_or_name(key)
@@ -258,39 +356,32 @@ def _dict_literal_a_python(node: ast.Dict) -> dict:
 
 
 def _flatten_list(node: ast.AST) -> list[str]:
-    """Extrae strings de una lista, incluyendo concatenaciones `lst1 + lst2 + ...`.
-
-    Si el nodo no es representable como lista de strings, devuelve [].
-    """
-    elts = _flatten_binop(node)
+    """Extrae strings de una lista, incluyendo concatenaciones y listas literales."""
     resultado: list[str] = []
-    for e in elts:
-        s = _extract_str_or_name(e)
+    for child in _flatten_binop(node):
+        s = _extract_str_or_name(child)
         if s is not None:
             resultado.append(s)
     return resultado
 
 
 def _flatten_binop(node: ast.AST) -> list[ast.AST]:
-    """Aplana un `ast.BinOp(Add)` en una lista de nodos hoja.
-
-    `a + b + c` se representa como `BinOp(BinOp(a, b), c)`. Esta función
-    lo aplana a `[a, b, c]`. Cualquier nodo que no sea lista ni BinOp
-    se devuelve como una lista de un solo elemento.
+    """Aplana un ast.BinOp(Add) en una lista de nodos hoja.
+    
+    Tambien expande ast.List en sus elementos individuales.
     """
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
         return _flatten_binop(node.left) + _flatten_binop(node.right)
     if isinstance(node, ast.List):
-        return list(node.elts)
+        result = []
+        for elt in node.elts:
+            result.extend(_flatten_binop(elt))
+        return result
     return [node]
 
 
 def _extract_str_or_name(node: ast.AST) -> str | None:
-    """Extrae string de Constant, Name.id, o último segmento de Attribute.
-
-    Devuelve None si el nodo no es representable como string simple (ej:
-    llamadas a función, expresiones complejas).
-    """
+    """Extrae string de Constant, Name.id, o ultimo segmento de Attribute."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if isinstance(node, ast.Name):

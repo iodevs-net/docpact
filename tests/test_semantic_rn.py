@@ -319,3 +319,104 @@ def test_has_pattern_soporta_or():
     codigo = "def f(): return SUSPENDIDO"
     spec = {"type": "has_pattern", "patron": "PROGRAMADO|SUSPENDIDO"}
     assert validar_rn(codigo, "RN-X", spec) == []
+
+
+# ── Tests YAML source ───────────────────────────────────────────────
+
+
+@pytest.fixture
+def proyecto_con_yaml(tmp_path: Path) -> Path:
+    """Crea proyecto con YAML de state machine."""
+    yaml_file = tmp_path / "tickets.yaml"
+    yaml_file.write_text("""version: 1
+estados:
+  atender:
+    transiciones: [asignado, en_traslado, programado, remoto, laboratorio, logistica]
+  suspendido:
+    transiciones: [asignado, en_traslado, en_terreno, programado, remoto, laboratorio, logistica]
+  resuelto:
+    transiciones: []
+""", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text("")
+    return tmp_path
+
+
+def test_yaml_source_transicion_valida(proyecto_con_yaml):
+    """yaml_source lee transiciones directo del YAML sin dict literal."""
+    spec = {
+        "type": "state_transition",
+        "from_estado": "atender",
+        "to_cualquiera": ["asignado", "remoto"],
+        "yaml_source": "tickets.yaml",
+    }
+    contexto = {"proyecto_root": str(proyecto_con_yaml)}
+    errores = validar_rn("def f(): pass", "RN-004", spec, contexto)
+    assert errores == [], f"Deberia pasar: {errores}"
+
+
+def test_yaml_source_transicion_invalida(proyecto_con_yaml):
+    """yaml_source detecta transicion inexistente."""
+    spec = {
+        "type": "state_transition",
+        "from_estado": "resuelto",
+        "to_estado": "atender",
+        "yaml_source": "tickets.yaml",
+    }
+    contexto = {"proyecto_root": str(proyecto_con_yaml)}
+    errores = validar_rn("def f(): pass", "RN-006", spec, contexto)
+    assert len(errores) == 1
+    assert "resuelto" in errores[0].mensaje
+
+
+def test_yaml_source_estados_key_custom(tmp_path):
+    """yaml_estados_key permite key custom en el YAML."""
+    yaml_file = tmp_path / "custom.yaml"
+    yaml_file.write_text("""maquina:
+  activo:
+    transiciones: [inactivo]
+""", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text("")
+    spec = {
+        "type": "state_transition",
+        "from_estado": "activo",
+        "to_estado": "inactivo",
+        "yaml_source": "custom.yaml",
+        "yaml_estados_key": "maquina",
+    }
+    contexto = {"proyecto_root": str(tmp_path)}
+    errores = validar_rn("def f(): pass", "RN-TEST", spec, contexto)
+    assert errores == []
+
+
+def test_yaml_source_archivo_no_existe(tmp_path):
+    """yaml_source con archivo inexistente retorna error claro."""
+    (tmp_path / "pyproject.toml").write_text("")
+    spec = {
+        "type": "state_transition",
+        "from_estado": "x",
+        "to_estado": "y",
+        "yaml_source": "no_existe.yaml",
+    }
+    contexto = {"proyecto_root": str(tmp_path)}
+    errores = validar_rn("def f(): pass", "RN-X", spec, contexto)
+    assert len(errores) == 1
+    assert "no encontrado" in errores[0].mensaje
+
+
+def test_yaml_source_fallback_sin_pyyaml(tmp_path, monkeypatch):
+    """Sin PyYAML instalado, yaml_source retorna error explicativo."""
+    import sys
+    monkeypatch.setitem(sys.modules, "yaml", None)
+    (tmp_path / "pyproject.toml").write_text("")
+    spec = {
+        "type": "state_transition",
+        "from_estado": "x",
+        "to_estado": "y",
+        "yaml_source": "x.yaml",
+    }
+    contexto = {"proyecto_root": str(tmp_path)}
+    # Force reimport to trigger ImportError
+    import docpact.checker.semantic_rn as sr
+    sr_validar = sr._extraer_yaml("x.yaml", spec, contexto, "RN-X")
+    assert isinstance(sr_validar, list)
+    assert "PyYAML" in sr_validar[0].mensaje
