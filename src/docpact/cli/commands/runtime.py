@@ -9,13 +9,13 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from docpact.cli.commands._common import add_json_flag, add_path_arg
 
 
 def cmd_guard(args: argparse.Namespace) -> int:
     """Comando guard: valida un cambio contra los CONTRATOs."""
     from docpact.guard import validar_cambio
-
-    archivo = args.archivo
+    archivo = args.path
     diff = args.diff
 
     if not Path(archivo).exists():
@@ -83,11 +83,7 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
         "guard",
         help="Valida un cambio contra los CONTRATOs antes de aplicarlo",
     )
-    guard_parser.add_argument(
-        "archivo",
-        type=str,
-        help="Path del archivo a modificar",
-    )
+    add_path_arg(guard_parser, help_text="Path del archivo a modificar")
     guard_parser.add_argument(
         "diff",
         type=str,
@@ -103,12 +99,7 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
             "Executes code and tests in isolation to verify side effects at runtime"
         ),
     )
-    run_parser.add_argument(
-        "path",
-        type=str,
-        nargs="?",
-        help="Archivo o directorio a verificar dinámicamente",
-    )
+    add_path_arg(run_parser, help_text="Archivo o directorio a verificar dinámicamente")
     run_parser.add_argument("--tests", required=True, help="Directorio con tests")
     run_parser.add_argument("--max-iterations", type=int, default=10)
     run_parser.add_argument(
@@ -130,9 +121,7 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
     doctor_parser.add_argument(
         "--min-score", type=int, default=90, help="Score mínimo requerido (defecto: 90)"
     )
-    doctor_parser.add_argument(
-        "--json", action="store_true", help="Salida en formato JSON"
-    )
+    add_json_flag(doctor_parser)
     doctor_parser.set_defaults(func=cmd_doctor)
 
     return guard_parser

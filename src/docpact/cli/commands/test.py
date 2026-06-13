@@ -6,6 +6,8 @@ import argparse
 import json
 from pathlib import Path
 
+from ._common import add_config_arg, add_json_flag, add_path_arg
+
 
 def cmd_test(args: argparse.Namespace) -> int:
     """Comando test: ejecuta tests de Reglas de Negocio con pytest."""
@@ -126,13 +128,8 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
             "Runs tests/rn/ directory to verify that declared rules actually work at runtime"
         ),
     )
-    test_parser.add_argument("path", type=str, help="Archivo o directorio a verificar")
-    test_parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Ruta al archivo de configuración docpact.toml",
-    )
+    add_path_arg(test_parser, "Archivo o directorio a verificar")
+    add_config_arg(test_parser)
     test_parser.set_defaults(func=cmd_test)
 
     # ── test-quality ──
@@ -146,11 +143,7 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
         default=".",
         help="Raíz del proyecto (default: directorio actual)",
     )
-    quality_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output estructurado en JSON",
-    )
+    add_json_flag(quality_parser)
     quality_parser.set_defaults(func=cmd_test_quality)
 
     # ── llm-judge ──
@@ -167,11 +160,7 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
         required=True,
         help="Descripcion de la regla de negocio que el test deberia verificar",
     )
-    llm_judge_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output estructurado en JSON",
-    )
+    add_json_flag(llm_judge_parser)
     llm_judge_parser.set_defaults(func=cmd_llm_judge)
 
     return test_parser

@@ -8,7 +8,13 @@ import os
 import sys
 from pathlib import Path
 
-from docpact.cli.commands._common import _es_excluido
+from docpact.cli.commands._common import (
+    _es_excluido,
+    add_force_flag,
+    add_json_flag,
+    add_path_arg,
+    add_project_root_arg,
+)
 
 
 def cmd_fix(args: argparse.Namespace) -> int:
@@ -146,7 +152,7 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
             "Updates docstrings to match actual function signatures (argument names, types)"
         ),
     )
-    fix_parser.add_argument("path", type=str, help="Archivo o directorio a corregir")
+    add_path_arg(fix_parser, "Archivo o directorio a corregir")
     fix_parser.add_argument(
         "--diff",
         action="store_true",
@@ -162,18 +168,14 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
             "Use --batch to scaffold an entire directory, or --function for one"
         ),
     )
-    init_parser.add_argument("path", type=str, help="Archivo o directorio")
+    add_path_arg(init_parser, "Archivo o directorio")
     init_parser.add_argument(
         "--function", type=str, default=None, help="Nombre específico de función"
     )
     init_parser.add_argument(
         "--batch", action="store_true", help="Procesar todo el directorio"
     )
-    init_parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Forzar generación incluso si la función tiene docstring sin CONTRATO",
-    )
+    add_force_flag(init_parser, "Forzar generación incluso si la función tiene docstring sin CONTRATO")
     init_parser.set_defaults(func=cmd_init)
 
     # ── config-suggest ──
@@ -184,12 +186,8 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
             "Use when 'verify-rn' reports NO_PATTERN for a business rule"
         ),
     )
-    suggest_parser.add_argument(
-        "--project-root",
-        type=str,
-        default=".",
-        help="Raíz del proyecto a analizar (default: directorio actual)",
-    )
+    add_project_root_arg(suggest_parser, required=False)
+    suggest_parser.set_defaults(project_root=".")
     suggest_parser.add_argument(
         "--apply",
         action="store_true",
@@ -201,11 +199,7 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
         default=0.5,
         help="Confidence mínima para incluir una sugerencia (0-1, default: 0.5)",
     )
-    suggest_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output estructurado en JSON",
-    )
+    add_json_flag(suggest_parser)
     suggest_parser.set_defaults(func=cmd_config_suggest)
 
     return fix_parser

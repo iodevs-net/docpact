@@ -11,7 +11,7 @@ import os
 import sys
 from pathlib import Path
 
-from ._common import _es_excluido, _print_contrato_texto
+from ._common import _es_excluido, _print_contrato_texto, add_format_arg, add_include_private_flag, add_json_flag, add_path_arg
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
@@ -198,17 +198,9 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
             "Use to inspect what docpact sees before running check"
         ),
     )
-    extract_parser.add_argument(
-        "path", type=str, help="Archivo o directorio a analizar"
-    )
-    extract_parser.add_argument(
-        "--include-private",
-        action="store_true",
-        help="Incluir funciones privadas (prefijo _)",
-    )
-    extract_parser.add_argument(
-        "--format", choices=["text", "json"], default="text", help="Formato de salida"
-    )
+    add_path_arg(extract_parser)
+    add_include_private_flag(extract_parser)
+    add_format_arg(extract_parser)
     extract_parser.set_defaults(func=cmd_extract)
 
     # ── index ──
@@ -244,11 +236,7 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
         default=".",
         help="Raíz del proyecto (default: directorio actual)",
     )
-    traceability_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output estructurado en JSON",
-    )
+    add_json_flag(traceability_parser)
     traceability_parser.set_defaults(func=cmd_traceability)
 
     return extract_parser

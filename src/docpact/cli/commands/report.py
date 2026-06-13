@@ -8,6 +8,8 @@ import os
 import sys
 from pathlib import Path
 
+from ._common import add_force_flag, add_json_flag, add_project_root_arg, add_show_flag
+
 
 def cmd_report(args: argparse.Namespace) -> int:
     """Genera reporte de delta REGISTRO.md vs código real."""
@@ -18,7 +20,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         validar_ci,
     )
 
-    project_root = Path(os.path.abspath(args.project_root))
+    project_root = Path(os.path.abspath(args.project_root or "."))
     registro = args.registro
 
     resultados = generar_reporte(project_root, registro)
@@ -92,23 +94,14 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
             "Útil para identificar RNs sin implementación o código sin CONTRATO"
         ),
     )
-    report_parser.add_argument(
-        "--project-root",
-        type=str,
-        default=".",
-        help="Raíz del proyecto (default: directorio actual)",
-    )
+    add_project_root_arg(report_parser, required=False)
     report_parser.add_argument(
         "--registro",
         type=str,
         default=None,
         help="Path al REGISTRO.md (default: docs/reglas-del-negocio/REGISTRO.md)",
     )
-    report_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output estructurado en JSON (para agentes)",
-    )
+    add_json_flag(report_parser)
     report_parser.add_argument(
         "--ci",
         action="store_true",
@@ -132,21 +125,9 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
         default=".",
         help="Project root (default: current directory)",
     )
-    briefing_parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Force regeneration even if briefing is up-to-date",
-    )
-    briefing_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Structured JSON output",
-    )
-    briefing_parser.add_argument(
-        "--show",
-        action="store_true",
-        help="Print briefing to stdout instead of saving",
-    )
+    add_force_flag(briefing_parser, help_text="Force regeneration even if briefing is up-to-date")
+    add_json_flag(briefing_parser)
+    add_show_flag(briefing_parser)
     briefing_parser.set_defaults(func=cmd_briefing)
 
     return report_parser

@@ -12,7 +12,21 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ._common import _es_excluido, _print_contrato_texto
+from ._common import (
+    _es_excluido,
+    _print_contrato_texto,
+    add_config_arg,
+    add_diff_flag,
+    add_fix_flag,
+    add_json_flag,
+    add_max_rns_args,
+    add_min_score_arg,
+    add_path_arg,
+    add_project_root_arg,
+    add_show_legacy_score_flag,
+    add_staged_flag,
+    add_strict_flag,
+)
 
 logger = logging.getLogger("docpact.cli")
 
@@ -502,54 +516,17 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
             "Para arreglar errores: agregar CONTRATO faltante o corregir side_effects en el docstring"
         ),
     )
-    check_parser.add_argument("path", type=str, help="Archivo o directorio a verificar")
-    check_parser.add_argument(
-        "--strict",
-        action="store_true",
-        help="Falla si hay funciones públicas sin CONTRATO",
-    )
-    check_parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Ruta al archivo de configuración docpact.toml",
-    )
-    check_parser.add_argument(
-        "--diff",
-        action="store_true",
-        help="Solo verificar archivos modificados vs HEAD (git diff)",
-    )
+    add_path_arg(check_parser, help_text="Archivo o directorio a verificar")
+    add_strict_flag(check_parser)
+    add_config_arg(check_parser)
+    add_diff_flag(check_parser)
     check_parser.add_argument(
         "--report", action="store_true", help="Reporte detallado con sugerencias"
     )
-    check_parser.add_argument(
-        "--fix",
-        action="store_true",
-        help="Auto-genera CONTRATOs para funciones sin ninguno (--strict implícito)",
-    )
-    check_parser.add_argument(
-        "--min-score",
-        type=int,
-        default=0,
-        help="DEPRECADO: usar --max-rns-fake y --max-rns-huerfanas. Falla si el score (vanity metric) es menor",
-    )
-    check_parser.add_argument(
-        "--max-rns-fake",
-        type=int,
-        default=0,
-        help="Máximo de RNs fake permitidas (mentiras del agente en CONTRATOS). Falla si se supera. Default: 0",
-    )
-    check_parser.add_argument(
-        "--max-rns-huerfanas",
-        type=int,
-        default=None,
-        help="Máximo de RNs huerfanas permitidas (en REGISTRO sin CONTRATO). Falla si se supera. Default: no falla",
-    )
-    check_parser.add_argument(
-        "--show-legacy-score",
-        action="store_true",
-        help="Muestra el score AI-Native deprecado (0-100). Por default se ocultan las métricas vanidosas",
-    )
+    add_fix_flag(check_parser)
+    add_min_score_arg(check_parser)
+    add_max_rns_args(check_parser)
+    add_show_legacy_score_flag(check_parser)
     check_parser.add_argument(
         "--no-run-tests",
         action="store_true",
@@ -571,51 +548,14 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
             "Faster than 'check' — ideal for pre-commit hooks"
         ),
     )
-    lint_parser.add_argument("path", type=str, help="Archivo o directorio a verificar")
-    lint_parser.add_argument(
-        "--strict",
-        action="store_true",
-        help="Falla si hay funciones públicas sin CONTRATO",
-    )
-    lint_parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Ruta al archivo de configuración docpact.toml",
-    )
-    lint_parser.add_argument(
-        "--diff",
-        action="store_true",
-        help="Solo verificar archivos modificados vs HEAD (git diff)",
-    )
-    lint_parser.add_argument(
-        "--min-score",
-        type=int,
-        default=0,
-        help="DEPRECADO: usar --max-rns-fake y --max-rns-huerfanas. Falla si el score (vanity metric) es menor",
-    )
-    lint_parser.add_argument(
-        "--max-rns-fake",
-        type=int,
-        default=0,
-        help="Máximo de RNs fake permitidas. Falla si se supera. Default: 0",
-    )
-    lint_parser.add_argument(
-        "--max-rns-huerfanas",
-        type=int,
-        default=None,
-        help="Máximo de RNs huerfanas permitidas. Falla si se supera. Default: no falla",
-    )
-    lint_parser.add_argument(
-        "--show-legacy-score",
-        action="store_true",
-        help="Muestra el score AI-Native deprecado (0-100). Por default se ocultan las métricas vanidosas",
-    )
-    lint_parser.add_argument(
-        "--fix",
-        action="store_true",
-        help="Auto-genera CONTRATOs para funciones sin ninguno (--strict implícito)",
-    )
+    add_path_arg(lint_parser, help_text="Archivo o directorio a verificar")
+    add_strict_flag(lint_parser)
+    add_config_arg(lint_parser)
+    add_diff_flag(lint_parser)
+    add_min_score_arg(lint_parser)
+    add_max_rns_args(lint_parser)
+    add_show_legacy_score_flag(lint_parser)
+    add_fix_flag(lint_parser)
     lint_parser.set_defaults(func=cmd_lint)
 
     # ── validate ──
@@ -630,11 +570,7 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
     validate_parser.add_argument(
         "files", nargs="*", help="Archivos a validar (git staged files si se omite)"
     )
-    validate_parser.add_argument(
-        "--staged",
-        action="store_true",
-        help="Usar archivos staged de git (default si no se pasan archivos)",
-    )
+    add_staged_flag(validate_parser)
     validate_parser.set_defaults(func=cmd_validate)
 
     # ── verify-rn ──
@@ -646,17 +582,8 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
             "Ejecutar antes de cada commit para asegurar que reglas declaradas estén implementadas"
         ),
     )
-    verify_rn_parser.add_argument(
-        "--project-root",
-        type=str,
-        required=True,
-        help="Raíz del proyecto a analizar",
-    )
-    verify_rn_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output estructurado en JSON",
-    )
+    add_project_root_arg(verify_rn_parser)
+    add_json_flag(verify_rn_parser)
     verify_rn_parser.set_defaults(func=cmd_verify_rns)
 
     return check_parser

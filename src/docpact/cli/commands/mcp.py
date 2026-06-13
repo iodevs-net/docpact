@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 
+from ._common import add_json_flag, add_project_root_arg
 
 def cmd_mcp(args: argparse.Namespace) -> int:
     """Comando mcp: inicia el MCP server para agentes."""
@@ -114,12 +115,7 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
             "Provides docpact tools to AI agents via Model Context Protocol"
         ),
     )
-    mcp_parser.add_argument(
-        "--project-root",
-        type=str,
-        default=".",
-        help="Raíz del proyecto (default: directorio actual)",
-    )
+    add_project_root_arg(mcp_parser, required=False, default=".")
     mcp_parser.set_defaults(func=cmd_mcp)
 
     # ── mcp-doctor ──
@@ -127,17 +123,8 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
         "mcp-doctor",
         help="Diagnostica por qué las tools MCP no cargan en el host (stdio, wrapper, etc.)",
     )
-    mcp_doctor_parser.add_argument(
-        "--project-root",
-        type=str,
-        default=".",
-        help="Raíz del proyecto (default: directorio actual)",
-    )
-    mcp_doctor_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output estructurado en JSON (para tooling y agentes)",
-    )
+    add_project_root_arg(mcp_doctor_parser, required=False, default=".")
+    add_json_flag(mcp_doctor_parser)
     mcp_doctor_parser.set_defaults(func=cmd_mcp_doctor)
 
     # ── install-mcp ──
@@ -145,12 +132,7 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
         "install-mcp",
         help="Configura docpact como MCP server en el host del agent (OMP/Claude Code)",
     )
-    install_parser.add_argument(
-        "--project-root",
-        type=str,
-        default=".",
-        help="Raíz del proyecto (default: directorio actual)",
-    )
+    add_project_root_arg(install_parser, required=False, default=".")
     install_parser.add_argument(
         "--wrapper",
         type=str,
@@ -163,11 +145,7 @@ def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
         default=None,
         help="Forzar host ('omp', 'omp_project', 'claude_code', 'project'). Default: autodetectar",
     )
-    install_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output estructurado en JSON",
-    )
+    add_json_flag(install_parser)
     install_parser.set_defaults(func=cmd_install_mcp)
 
     return mcp_parser
