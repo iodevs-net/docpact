@@ -16,7 +16,7 @@ Pipeline architecture with clear layer separation:
 - Extractors: Python (stdlib `ast`) and TypeScript (regex-based)
 
 **Layer 2 — Verification** (`src/docpact/checker/`)
-- `orchestrator.py` (884 lines) coordinates 21 specialized checkers per function:
+- `orchestrator.py` (312 lines) coordinates 21 specialized checkers per function:
   1. `side_effects.py` — AST walker classifies calls into categories vs declared effects
   2. `transitive_effects.py` — Follows call chains via `ContractIndex` for undeclared effects
   3. `semantic/` — 5 validators in separate modules: `state_transition`, `no_import`, `required_groups`, `tenant_safe`, `has_pattern`
@@ -153,7 +153,7 @@ docpact mcp-doctor                  # MCP server diagnostics
 | `src/docpact/__init__.py` | Package root, version declaration |
 | `src/docpact/config.py` | `DocpactConfig` — reads `docpact.toml`, compiles patterns |
 | `src/docpact/models/contrato.py` | Core domain models (all frozen dataclasses) |
-| `src/docpact/checker/orchestrator.py` | Central verification pipeline (884 lines) |
+| `src/docpact/checker/orchestrator.py` | Central verification pipeline (312 lines) + `_process_function.py` + `_checks.py` + `_file_utils.py` |
 | `src/docpact/parser/lexer.py` | CONTRATO block tokenizer |
 | `src/docpact/parser/parser.py` | Token-to-`Contrato` model converter |
 | `src/docpact/parser/extractor.py` | Python AST docstring extractor |
