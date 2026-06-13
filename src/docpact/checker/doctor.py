@@ -259,10 +259,37 @@ def check_version(minima: str = "0.4.0") -> DoctorCheck:
     except (ValueError, AttributeError):
         return DoctorCheck("Version docpact", True, f"v{version}")
 
+def check_fastembed() -> DoctorCheck:
+    """Verifica que FastEmbed esté instalado para detección semántica."""
+    try:
+        from fastembed import TextEmbedding
+        # Intentar cargar el modelo que usa docpact
+        model = TextEmbedding(model_name="jinaai/jina-embeddings-v2-base-es")
+        return DoctorCheck(
+            "FastEmbed",
+            True,
+            "Instalado y modelo jina-embeddings-v2-base-es disponible",
+            "",
+        )
+    except ImportError:
+        return DoctorCheck(
+            "FastEmbed",
+            False,
+            "No instalado — detección de conflictos usa keywords (menos precisa)",
+            "Instalar: pip install fastembed",
+        )
+    except Exception as e:
+        return DoctorCheck(
+            "FastEmbed",
+            False,
+            f"Instalado pero modelo no disponible: {e}",
+            "Reinstalar: pip install --upgrade fastembed",
+        )
+
+
 
 def ejecutar(proyecto_root: Path | str, min_score: int = 90) -> DoctorResult:
     """Ejecuta todas las verificaciones del doctor."""
-    root = Path(proyecto_root)
     checks = [
         check_ci_integridad(root),
         check_precommit(root),
@@ -270,6 +297,7 @@ def ejecutar(proyecto_root: Path | str, min_score: int = 90) -> DoctorResult:
         check_rn_registry(root),
         check_tests_placeholder(root),
         check_version(),
+        check_fastembed(),
     ]
     ok = sum(1 for c in checks if c.estado)
     score = int((ok / len(checks)) * 100) if checks else 0

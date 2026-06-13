@@ -89,9 +89,12 @@ def _cargar_o_generar_index(project_root: str, force: bool = False) -> dict[str,
     if _embedder is None:
         _embedder = _try_load_embedder()
         if _embedder is not None:
-            logger.info("FastEmbed cargado: paraphrase-multilingual-mpnet-base-v2 (búsqueda semántica habilitada)")
+            logger.info("FastEmbed cargado: jina-embeddings-v2-base-es (búsqueda semántica habilitada)")
         else:
-            logger.info("FastEmbed no disponible: búsqueda keyword-only")
+            logger.warning(
+                "FastEmbed no instalado — detección de conflictos usa keywords (menos precisa). "
+                "Instalar: pip install fastembed"
+            )
 
     index_path = Path(project_root) / ".docpact" / "index.json"
 
