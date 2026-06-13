@@ -33,6 +33,7 @@ Use this skill when:
 | Explaining to stakeholder | `explicar_errores` + `explicar_rn` | Human-readable output |
 | Modifying code | `modificar_archivo` | Real-time validation before applying |
 | Extracting RNs from code | `extraer_rns` | Extract business rules from existing codebases |
+| Predicting bugs | `predecir_bugs` | Detect common bug patterns via AST analysis |
 | Committing changes | `validar_cambio` | Pre-commit verification |
 
 
