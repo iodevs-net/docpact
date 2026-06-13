@@ -1163,6 +1163,27 @@ def cmd_briefing(args: argparse.Namespace) -> int:
 
     return 0
 
+def cmd_guard(args: argparse.Namespace) -> int:
+    """Comando guard: valida un cambio contra los CONTRATOs."""
+    from docpact.guard import validar_cambio
+
+    archivo = args.archivo
+    diff = args.diff
+
+    if not Path(archivo).exists():
+        print(f"Archivo no encontrado: {archivo}", file=sys.stderr)
+        return 2
+
+    resultado = validar_cambio(archivo, diff)
+
+    if resultado.allowed:
+        print(f"Cambio seguro: {resultado.message}")
+        return 0
+    else:
+        print(resultado.message)
+        return 1
+
+
 def _print_rn_results(results: list) -> None:
     """Imprime resultados de verify-rn en formato legible."""
     for r in results:

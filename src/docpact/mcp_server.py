@@ -693,6 +693,24 @@ TOOLS = [
             "properties": {},
         },
     },
+    {
+        "name": "modificar_archivo",
+        "description": "Valida un cambio contra los CONTRATOs antes de aplicarlo. Si el cambio viola side effects o RNs, lo RECHAZA. Usa esto SIEMPRE antes de modificar un archivo.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "archivo": {
+                    "type": "string",
+                    "description": "Path del archivo a modificar. Ej: 'soporte/services/tickets.py'",
+                },
+                "diff": {
+                    "type": "string",
+                    "description": "El diff o código nuevo a aplicar",
+                },
+            },
+            "required": ["archivo", "diff"],
+        },
+    },
 ]
 
 
@@ -719,6 +737,22 @@ def tool_obtener_briefing() -> dict[str, Any]:
         "updated": fue_regenerado,
     }
 
+def tool_modificar_archivo(archivo: str, diff: str) -> dict[str, Any]:
+    """Tool 8: Valida un cambio contra los CONTRATOs antes de aplicarlo."""
+    import os
+    project_root = os.environ.get("DOCPACT_PROJECT_ROOT", ".")
+    from docpact.guard import validar_cambio
+
+    resultado = validar_cambio(archivo, diff, project_root)
+    return {
+        "allowed": resultado.allowed,
+        "message": resultado.message,
+        "violations": [
+            {"funcion": v.funcion, "tipo": v.tipo, "mensaje": v.mensaje, "sugerencia": v.sugerencia}
+            for v in resultado.violations
+        ],
+    }
+
 def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
     """Dispatch tool call to the right function."""
     dispatch = {
@@ -741,6 +775,10 @@ def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
             args.get("referencia", "")
         ),
         "obtener_briefing": lambda: tool_obtener_briefing(),
+        "modificar_archivo": lambda: tool_modificar_archivo(
+            args.get("archivo", ""),
+            args.get("diff", ""),
+        ),
     }
 
     fn = dispatch.get(tool_name)

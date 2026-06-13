@@ -532,6 +532,22 @@ def main(argv: list[str] | None = None) -> int:
         help="Print briefing to stdout instead of saving",
     )
 
+    # guard
+    guard_parser = subparsers.add_parser(
+        "guard",
+        help="Valida un cambio contra los CONTRATOs antes de aplicarlo",
+    )
+    guard_parser.add_argument(
+        "archivo",
+        type=str,
+        help="Path del archivo a modificar",
+    )
+    guard_parser.add_argument(
+        "diff",
+        type=str,
+        help="El diff o código nuevo a aplicar",
+    )
+
     args = parser.parse_args(argv)
 
     # Dispatch to command handlers
@@ -556,6 +572,7 @@ def main(argv: list[str] | None = None) -> int:
         cmd_traceability,
         cmd_verify_rns,
         cmd_briefing,
+        cmd_guard,
     )
 
     dispatch = {
@@ -579,6 +596,7 @@ def main(argv: list[str] | None = None) -> int:
         "traceability": cmd_traceability,
         "verify-rn": cmd_verify_rns,
         "briefing": cmd_briefing,
+        "guard": cmd_guard,
     }
 
     handler = dispatch.get(args.command)
