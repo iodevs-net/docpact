@@ -773,6 +773,78 @@ TOOLS = [
             "required": ["rn_id"],
         },
     },
+    {
+        "name": "setup_docpact",
+        "description": "Inicializa docpact en un proyecto: crea docpact.toml, directorio de docs, genera index.json. Ejecutar una sola vez al inicio.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {
+                    "type": "string",
+                    "description": "Raíz del proyecto (default: directorio actual)",
+                },
+            },
+        },
+    },
+    {
+        "name": "crear_contrato",
+        "description": "Genera un CONTRATO para una función desde lenguaje natural. Retorna el docstring formateado para insertar.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "archivo": {"type": "string", "description": "Path del archivo. Ej: 'src/tickets.py'"},
+                "funcion": {"type": "string", "description": "Nombre de la función. Ej: 'crear_ticket'"},
+                "side_effects": {"type": "array", "items": {"type": "string"}, "description": "Side effects. Ej: ['db_write', 'email_send']"},
+                "rn": {"type": "array", "items": {"type": "string"}, "description": "RNs que aplica. Ej: ['RN-TKT-001']"},
+                "input_desc": {"type": "string", "description": "Descripción del input"},
+                "output_desc": {"type": "string", "description": "Descripción del output"},
+            },
+            "required": ["archivo", "funcion", "side_effects"],
+        },
+    },
+    {
+        "name": "corregir_contrato",
+        "description": "Analiza un CONTRATO con problemas y sugiere corrección.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "archivo": {"type": "string", "description": "Path del archivo"},
+                "funcion": {"type": "string", "description": "Nombre de la función"},
+                "problema": {"type": "string", "description": "Problema detectado. Ej: 'side_effects no coincide con implementación'"},
+            },
+            "required": ["archivo", "funcion", "problema"],
+        },
+    },
+    {
+        "name": "ejecutar_verificacion",
+        "description": "Ejecuta verificación completa de CONTRATOs. Retorna errores, warnings y métricas.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {"type": "string", "description": "Raíz del proyecto (default: directorio actual)"},
+            },
+        },
+    },
+    {
+        "name": "ejecutar_tests",
+        "description": "Ejecuta tests de Reglas de Negocio con pytest. Retorna si pasaron o fallaron.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {"type": "string", "description": "Raíz del proyecto (default: directorio actual)"},
+            },
+        },
+    },
+    {
+        "name": "generar_reporte",
+        "description": "Genera reporte de reglas de negocio: cuántas RNs hay, cuántas tienen código, cuántas tienen test.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {"type": "string", "description": "Raíz del proyecto (default: directorio actual)"},
+            },
+        },
+    },
 ]
 
 
@@ -1060,6 +1132,271 @@ def tool_explicar_rn(rn_id: str) -> dict[str, Any]:
         ),
     }
 
+def tool_setup_docpact(project_root: str | None = None) -> dict[str, Any]:
+    """Tool 13: Inicializa docpact en un proyecto.
+
+    Crea docpact.toml, genera index.json, verifica que todo esté listo.
+    Ejecutar una sola vez al inicio del proyecto.
+    """
+    import os
+    root = project_root or os.environ.get("DOCPACT_PROJECT_ROOT", ".")
+    root_path = Path(root)
+
+    result = {"pasos": [], "errores": []}
+
+    # 1. Crear docpact.toml si no existe
+    config_path = root_path / "docpact.toml"
+    if not config_path.exists():
+        config_content = f'''# docpact configuration
+[project]
+name = "{root_path.name}"
+
+[rules]
+# Add RN pattern rules here
+'''
+        config_path.write_text(config_content, encoding="utf-8")
+        result["pasos"].append({"paso": "docpact.toml", "estado": "creado", "path": str(config_path)})
+    else:
+        result["pasos"].append({"paso": "docpact.toml", "estado": "ya_existia"})
+
+    # 2. Crear directorio de docs si no existe
+    docs_dir = root_path / "docs" / "reglas-del-negocio"
+    if not docs_dir.exists():
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        registro = docs_dir / "REGISTRO.md"
+        registro.write_text("# Registro de Reglas de Negocio\n", encoding="utf-8")
+        result["pasos"].append({"paso": "docs/reglas-del-negocio/", "estado": "creado"})
+    else:
+        result["pasos"].append({"paso": "docs/reglas-del-negocio/", "estado": "ya_existia"})
+
+    # 3. Generar index
+    try:
+        from docpact.index import generar_index, guardar_index
+        index = generar_index(str(root_path))
+        path = guardar_index(index, str(root_path))
+        result["pasos"].append({"paso": "index.json", "estado": "generado", "path": str(path)})
+    except Exception as e:
+        result["errores"].append({"paso": "index.json", "error": str(e)})
+
+    # 4. Verificar FastEmbed
+    try:
+        from docpact.checker.doctor import check_fastembed
+        check = check_fastembed()
+        result["pasos"].append({"paso": "fastembed", "estado": "ok" if check.estado else "falta", "mensaje": check.mensaje})
+    except Exception:
+        result["pasos"].append({"paso": "fastembed", "estado": "no_verificado"})
+
+    return {
+        "setup_completo": len(result["errores"]) == 0,
+        "pasos": result["pasos"],
+        "errores": result["errores"],
+        "siguiente_paso": "Usar crear_contrato para agregar reglas de negocio",
+    }
+
+
+def tool_crear_contrato(
+    archivo: str,
+    funcion: str,
+    side_effects: list[str],
+    rn: list[str] | None = None,
+    input_desc: str | None = None,
+    output_desc: str | None = None,
+) -> dict[str, Any]:
+    """Tool 14: Crea un CONTRATO para una función desde lenguaje natural.
+
+    Genera el docstring con CONTRATO formateado correctamente.
+    El agente debe confirmar con el usuario antes de escribir.
+    """
+    from pathlib import Path
+
+    file_path = Path(archivo)
+    if not file_path.exists():
+        return {"error": f"Archivo no encontrado: {archivo}"}
+
+    # Construir CONTRATO
+    lines = ['    """']
+    lines.append(f'    CONTRATO:')
+    lines.append(f'    input: {input_desc or "completar"}')
+    lines.append(f'    output: {output_desc or "completar"}')
+    lines.append(f'    side_effects: [{", ".join(side_effects) if side_effects else "ninguno"}]')
+    if rn:
+        lines.append(f'    rn: [{", ".join(rn)}]')
+    else:
+        lines.append(f'    rn: []')
+    lines.append('    """')
+
+    contrato_texto = "\n".join(lines)
+
+    return {
+        "archivo": archivo,
+        "funcion": funcion,
+        "contrato_generado": contrato_texto,
+        "lineas_agregar": len(lines),
+        "siguiente_paso": f"Agregar el CONTRATO al docstring de {funcion} en {archivo}",
+        "instruccion_agente": (
+            f"Insertar el siguiente CONTRATO al inicio del docstring de la función {funcion} "
+            f"en el archivo {archivo}. Usar modificar_archivo para aplicar el cambio."
+        ),
+    }
+
+
+def tool_corregir_contrato(archivo: str, funcion: str, problema: str) -> dict[str, Any]:
+    """Tool 15: Corrige un CONTRATO con problemas.
+
+    Analiza el problema sugerido y genera la corrección.
+    """
+    from pathlib import Path
+
+    file_path = Path(archivo)
+    if not file_path.exists():
+        return {"error": f"Archivo no encontrado: {archivo}"}
+
+    contenido = file_path.read_text(encoding="utf-8")
+
+    # Buscar la función y su docstring
+    import re
+    patron = rf'def\s+{re.escape(funcion)}\s*\(.*?\).*?:\s*\n\s*"""(.*?)"""'
+    match = re.search(patron, contenido, re.DOTALL)
+
+    if not match:
+        return {"error": f"No se encontró función {funcion} con docstring en {archivo}"}
+
+    docstring_actual = match.group(1)
+
+    return {
+        "archivo": archivo,
+        "funcion": funcion,
+        "problema_detectado": problema,
+        "docstring_actual": docstring_actual.strip(),
+        "instruccion_agente": (
+            f"Revisar el CONTRATO de {funcion} en {archivo}. "
+            f"Problema: {problema}. "
+            f"Usar modificar_archivo para aplicar la corrección."
+        ),
+    }
+
+
+def tool_ejecutar_verificacion(project_root: str | None = None) -> dict[str, Any]:
+    """Tool 16: Ejecuta verificación completa de CONTRATOs.
+
+    Retorna resumen de errores, warnings y métricas.
+    """
+    import os
+    root = project_root or os.environ.get("DOCPACT_PROJECT_ROOT", ".")
+
+    try:
+        from docpact.config import DocpactConfig
+        from docpact.checker.orchestrator import check_proyecto
+
+        config = DocpactConfig()
+        resultado = check_proyecto(root, config)
+
+        errores = []
+        warnings = []
+        for archivo_result in resultado.archivos:
+            for func in archivo_result.funciones:
+                for h in func.hallazgos:
+                    item = {
+                        "archivo": archivo_result.archivo,
+                        "funcion": h.funcion,
+                        "mensaje": h.mensaje,
+                        "sugerencia": h.sugerencia,
+                    }
+                    if h.tipo == "error":
+                        errores.append(item)
+                    else:
+                        warnings.append(item)
+
+        return {
+            "ejecutado": True,
+            "total_funciones": resultado.total_funciones,
+            "funciones_con_contrato": resultado.funciones_con_contrato,
+            "total_errores": len(errores),
+            "total_warnings": len(warnings),
+            "errores": errores[:10],  # Top 10
+            "warnings": warnings[:10],  # Top 10
+            "score": resultado.calcular_score(),
+            "nivel": resultado.nivel,
+        }
+    except Exception as e:
+        return {"error": f"Error ejecutando verificación: {e}"}
+
+
+def tool_ejecutar_tests(project_root: str | None = None) -> dict[str, Any]:
+    """Tool 17: Ejecuta tests de Reglas de Negocio.
+
+    Retorna resultados de tests: pasaron, fallaron, errores.
+    """
+    import os
+    import subprocess
+    root = project_root or os.environ.get("DOCPACT_PROJECT_ROOT", ".")
+
+    try:
+        result = subprocess.run(
+            ["python3", "-m", "pytest", "tests/", "-x", "-q", "--tb=short", "--override-ini=addopts="],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        return {
+            "ejecutado": True,
+            "exito": result.returncode == 0,
+            "output": result.stdout[-2000:] if result.stdout else "",
+            "errores": result.stderr[-1000:] if result.stderr else "",
+            "return_code": result.returncode,
+        }
+    except subprocess.TimeoutExpired:
+        return {"error": "Tests excedieron timeout de 60s"}
+    except Exception as e:
+        return {"error": f"Error ejecutando tests: {e}"}
+
+
+def tool_generar_reporte(project_root: str | None = None) -> dict[str, Any]:
+    """Tool 18: Genera reporte de reglas de negocio.
+
+    Retorna resumen de RNs: cuántas hay, cuántas tienen código, cuántas tienen test.
+    """
+    import os
+    root = project_root or os.environ.get("DOCPACT_PROJECT_ROOT", ".")
+
+    try:
+        from docpact.index import cargar_index
+        index = cargar_index(root)
+
+        if index is None:
+            return {"error": "Índice no encontrado. Ejecutar setup_docpact primero."}
+
+        rns = index.get("rns", {})
+        stats = index.get("stats", {})
+
+        rn_detalle = []
+        for rn_id, rn in sorted(rns.items()):
+            rn_detalle.append({
+                "id": rn_id,
+                "descripcion": rn["descripcion"],
+                "tiene_codigo": len(rn.get("funciones", [])) > 0,
+                "tiene_test": rn.get("tiene_test", False),
+                "en_registro": rn.get("en_registro", False),
+            })
+
+        return {
+            "generado": True,
+            "total_rns": stats.get("total_rns", 0),
+            "rns_con_codigo": stats.get("funciones_con_rn", 0),
+            "rns_con_test": stats.get("rns_con_test", 0),
+            "rns_sin_codigo": stats.get("total_rns", 0) - stats.get("funciones_con_rn", 0),
+            "rns": rn_detalle,
+            "resumen": (
+                f"{stats.get('total_rns', 0)} RNs totales, "
+                f"{stats.get('funciones_con_rn', 0)} con código, "
+                f"{stats.get('rns_con_test', 0)} con test"
+            ),
+        }
+    except Exception as e:
+        return {"error": f"Error generando reporte: {e}"}
+
 
 def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
     """Dispatch tool call to the right function."""
@@ -1097,6 +1434,25 @@ def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
             args.get("archivo_registro", "docs/reglas-del-negocio/REGISTRO.md"),
         ),
         "explicar_rn": lambda: tool_explicar_rn(args.get("rn_id", "")),
+        "setup_docpact": lambda: tool_setup_docpact(args.get("project_root")),
+        "crear_contrato": lambda: tool_crear_contrato(
+            args.get("archivo", ""),
+            args.get("funcion", ""),
+            args.get("side_effects", []),
+            rn=args.get("rn"),
+            input_desc=args.get("input_desc"),
+            output_desc=args.get("output_desc"),
+        ),
+        "corregir_contrato": lambda: tool_corregir_contrato(
+            args.get("archivo", ""),
+            args.get("funcion", ""),
+            args.get("problema", ""),
+        ),
+        "ejecutar_verificacion": lambda: tool_ejecutar_verificacion(
+            args.get("project_root")
+        ),
+        "ejecutar_tests": lambda: tool_ejecutar_tests(args.get("project_root")),
+        "generar_reporte": lambda: tool_generar_reporte(args.get("project_root")),
     }
 
     fn = dispatch.get(tool_name)
