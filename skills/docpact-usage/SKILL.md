@@ -34,6 +34,7 @@ Use this skill when:
 | Modifying code | `modificar_archivo` | Real-time validation before applying |
 | Extracting RNs from code | `extraer_rns` | Extract business rules from existing codebases |
 | Predicting bugs | `predecir_bugs` | Detect common bug patterns via AST analysis |
+| Generating code | `generar_codigo` | Generate code skeleton with CONTRATO from NL |
 | Committing changes | `validar_cambio` | Pre-commit verification |
 
 
