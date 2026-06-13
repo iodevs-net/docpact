@@ -1108,6 +1108,34 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "descubrir_reglas",
+        "description": (
+            "Analiza el código y descubre reglas de negocio potenciales que no están declaradas.\n"
+            "Detecta patrones como validaciones, permisos, side effects, transiciones de estado.\n"
+            "Útil para encontrar reglas que los desarrolladores olvidaron formalizar.\n\n"
+            "EJEMPLO — Reglas descubiertas:\n"
+            "  Llamada: descubrir_reglas()\n"
+            "  Retorna: {archivos_escaneados: 50, reglas_encontradas: 23,\n"
+            "    por_tipo: {validacion: 8, permiso: 5, negocio: 6, auditoria: 4},\n"
+            "    por_confianza: {alta: 12, media: 8, baja: 3},\n"
+            "    reglas: [{tipo: 'validacion', titulo: 'Validación de entrada detectada',\n"
+            "      evidencia: 'if not cliente: raise ValueError',\n"
+            "      archivo: 'clientes/services.py', linea: 45, confianza: 'alta',\n"
+            "      sugerencia: 'Formalizar como CONTRATO con campo borde'}]}\n\n"
+            "EJEMPLO — Escanear directorio específico:\n"
+            "  Llamada: descubrir_reglas(project_root='/home/user/mi-proyecto')"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {
+                    "type": "string",
+                    "description": "Raíz del proyecto (default: directorio actual)",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -1703,6 +1731,21 @@ def tool_explicar_errores(project_root: str | None = None) -> dict[str, Any]:
     except Exception as e:
         return {"error": f"Error explicando errores: {e}"}
 
+def tool_descubrir_reglas(project_root: str | None = None) -> dict[str, Any]:
+    """Tool 20: Descubre reglas de negocio potenciales en el código.
+
+    Analiza el código buscando patrones que sugieren reglas no declaradas.
+    """
+    import os
+    root = project_root or os.environ.get("DOCPACT_PROJECT_ROOT", ".")
+
+    try:
+        from docpact.checker.rule_discovery import escanear_proyecto
+        return escanear_proyecto(Path(root))
+    except Exception as e:
+        return {"error": f"Error descubriendo reglas: {e}"}
+
+
 
 
 def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
@@ -1761,6 +1804,7 @@ def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
         "ejecutar_tests": lambda: tool_ejecutar_tests(args.get("project_root")),
         "generar_reporte": lambda: tool_generar_reporte(args.get("project_root")),
         "explicar_errores": lambda: tool_explicar_errores(args.get("project_root")),
+        "descubrir_reglas": lambda: tool_descubrir_reglas(args.get("project_root")),
     }
 
     fn = dispatch.get(tool_name)
