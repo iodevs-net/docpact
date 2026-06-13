@@ -203,3 +203,10 @@ pytest --cov=src/docpact --cov-report=html  # with HTML coverage
 pytest tests/test_semantic_rn.py    # single module
 pytest -k "tenant_safe"             # by keyword
 ```
+## Skills
+
+| Skill | Trigger | Purpose |
+|-------|---------|---------|
+| `docpact-usage` | docpact, contratos, reglas de negocio, RN | Correct usage of docpact verification tools |
+
+See `skills/docpact-usage/SKILL.md` for detailed instructions.
