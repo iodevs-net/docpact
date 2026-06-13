@@ -1246,92 +1246,123 @@ def _calcular_similitud(a: str, b: str) -> float:
 
 
 def tool_verificar_conflicto(rn_descripcion: str) -> dict[str, Any]:
-    """Tool 10: Verifica si una nueva RN entra en conflicto y sugiere resolución.
+    """Tool 10: Verifica conflictos y retorna evidencia para que el agente decida.
 
-    Detecta: duplicados, mismos conceptos, overrides.
-    Para cada conflicto sugiere una resolución concreta.
+    Pipeline híbrido:
+    1. Embeddings → candidatos por similitud semántica
+    2. Glosario → expandir sinónimos del dominio
+    3. Cross-reference → verificar si afectan mismas funciones
+    4. Agente (LLM) → interpreta evidencia y decide
+
+    El tool NO decide — el tool provee evidencia. El agente decide.
     """
     if _index is None:
         return {"error": "Índice no cargado"}
+
+    # Cargar glosario de sinónimos
+    sinonimos = _cargar_glosario()
+    rn_expandida = _expandir_con_sinonimos(rn_descripcion, sinonimos)
 
     conflictos = []
     desc_lower = rn_descripcion.lower()
 
     for rn_id, rn in _index["rns"].items():
-        similitud = _calcular_similitud(rn_descripcion, rn["descripcion"])
+        # 1. Similitud semántica (embeddings)
+        similitud = _calcular_similitud(rn_expandida, rn["descripcion"])
 
-        # 1. Duplicado casi exacto
-        if similitud > 0.7:
-            conflictos.append({
-                "tipo": "duplicado",
-                "rn_id": rn_id,
-                "descripcion": rn["descripcion"],
-                "similitud": round(similitud, 2),
-                "explicacion": f"La RN propuesta es muy similar a {rn_id}.",
-                "resolucion": {
-                    "opcion_a": f"Usar {rn_id} existente si es la misma regla",
-                    "opcion_b": f"Crear nueva RN solo si la regla es diferente",
-                    "recomendacion": "opcion_a" if similitud > 0.85 else "evaluar",
-                },
-                "prioridad": "alta",
-            })
-            continue
+        # 2. Sinónimos: expandir la RN existente también
+        rn_expandida_existente = _expandir_con_sinonimos(rn["descripcion"], sinonimos)
+        similitud_expandida = _calcular_similitud(rn_expandida, rn_expandida_existente)
+        similitud_final = max(similitud, similitud_expandida)
 
-        # 2. Mismo concepto
-        if similitud > 0.4:
-            conflictos.append({
-                "tipo": "mismo_concepto",
-                "rn_id": rn_id,
-                "descripcion": rn["descripcion"],
-                "similitud": round(similitud, 2),
-                "explicacion": f"La RN propuesta trata un tema similar a {rn_id}.",
-                "resolucion": {
-                    "opcion_a": f"Agregar la nueva condición a {rn_id} como caso borde",
-                    "opcion_b": f"Crear RN separada si son reglas independientes",
-                    "recomendacion": "opcion_a" if similitud > 0.6 else "evaluar",
-                },
-                "prioridad": "media",
-            })
+        # 3. Cross-reference: misma función afectada
+        funcs_propuesta = _extraer_funciones_mencionadas(rn_expandida)
+        funcs_existente = set()
+        for f in rn.get("funciones", []):
+            funcs_existente.add(f.get("funcion", "").lower())
+        funcs_compartidas = funcs_propuesta & funcs_existente
 
-        # 3. Override potencial
-        if rn.get("funciones"):
-            for func in rn["funciones"]:
-                func_name = func.get("funcion", "").lower()
-                if func_name and func_name in desc_lower:
-                    conflictos.append({
-                        "tipo": "override",
-                        "rn_id": rn_id,
-                        "descripcion": rn["descripcion"],
-                        "funcion_afectada": func["funcion"],
-                        "explicacion": f"La RN propuesta afecta '{func['funcion']}', regulada por {rn_id}.",
-                        "resolucion": {
-                            "opcion_a": f"Actualizar {rn_id} para incluir la nueva condición",
-                            "opcion_b": f"Crear RN con mayor prioridad que {rn_id}",
-                            "opcion_c": f"Hacer que {rn_id} sea condicional (si X entonces Y)",
-                            "recomendacion": "opcion_a",
-                        },
-                        "prioridad": "alta",
-                    })
+        # Construir evidencia
+        evidencia = {
+            "rn_id": rn_id,
+            "descripcion_existente": rn["descripcion"],
+            "similitud_embeddings": round(similitud, 3),
+            "similitud_con_sinonimos": round(similitud_expandida, 3),
+            "similitud_final": round(similitud_final, 3),
+            "funcs_propuesta": list(funcs_propuesta),
+            "funcs_existente": list(funcs_existente),
+            "funcs_compartidas": list(funcs_compartidas),
+            "tiene_rn": rn.get("tiene_rn", False),
+            "rn_ids": rn.get("rn_ids", []),
+        }
 
-    # Generar resumen con recomendación
-    if conflictos:
-        alta = sum(1 for c in conflictos if c["prioridad"] == "alta")
-        media = sum(1 for c in conflictos if c["prioridad"] == "media")
+        # Solo reportar si hay señal de conflicto
+        if similitud_final > 0.3 or funcs_compartidas:
+            evidencia["tipo_señal"] = []
+            if similitud_final > 0.7:
+                evidencia["tipo_señal"].append("duplicado_potencial")
+            elif similitud_final > 0.4:
+                evidencia["tipo_señal"].append("mismo_concepto")
+            elif similitud_final > 0.3:
+                evidencia["tipo_señal"].append("tema_similar")
+            if funcs_compartidas:
+                evidencia["tipo_señal"].append("misma_funcion")
 
-        if alta > 0:
-            consejo = f"Hay {alta} conflictos urgentes. Revisá antes de crear la RN."
-        else:
-            consejo = f"Hay {media} posibles conflictos menores. Evaluá si aplican."
-    else:
-        consejo = "No detecté conflictos. Podés proceder a crear la RN."
+            conflictos.append(evidencia)
 
+    # Resumen para el agente
     return {
         "tiene_conflictos": len(conflictos) > 0,
-        "conflictos": conflictos,
         "total_conflictos": len(conflictos),
         "descripcion_evaluada": rn_descripcion,
-        "consejo": consejo,
+        "glosario_aplicado": bool(sinonimos),
+        "conflictos": sorted(conflictos, key=lambda x: x["similitud_final"], reverse=True),
+        "instruccion_agente": (
+            "Usá esta evidencia para decidir si hay conflicto real. "
+            "Considerá: similitud > 0.7 = probable duplicado, "
+            "similitud > 0.4 = mismo concepto, "
+            "funcs compartidas = override potencial. "
+            "El tool NO decide — VOS decidís."
+        ),
     }
+
+
+def _cargar_glosario() -> dict[str, list[str]]:
+    """Carga glosario de sinónimos desde docpact.toml."""
+    import tomllib
+    from pathlib import Path
+
+    config_path = Path("docpact.toml")
+    if not config_path.exists():
+        return {}
+
+    try:
+        with open(config_path, "rb") as f:
+            config = tomllib.load(f)
+        return config.get("synonyms", {})
+    except Exception:
+        return {}
+
+
+def _expandir_con_sinonimos(texto: str, sinonimos: dict[str, list[str]]) -> str:
+    """Expande palabras en el texto usando sinónimos del glosario."""
+    if not sinonimos:
+        return texto
+
+    resultado = texto.lower()
+    for termino, sins in sinonimos.items():
+        for sin in sins:
+            if sin.lower() in resultado:
+                resultado = resultado.replace(sin.lower(), termino.lower())
+    return resultado
+
+
+def _extraer_funciones_mencionadas(texto: str) -> set[str]:
+    """Extrae nombres de funciones mencionadas en el texto."""
+    import re
+    # Buscar patrones como crear_ticket, enviar_email, etc.
+    patron = r'\b([a-z_]+(?:_[a-z]+)+)\b'
+    return set(re.findall(patron, texto.lower()))
 
 
 def tool_crear_rn(rn_id: str, descripcion: str, archivo_registro: str = "docs/reglas-del-negocio/REGISTRO.md") -> dict[str, Any]:
