@@ -1534,47 +1534,81 @@ name = "{root_path.name}"
 
 
 def tool_crear_contrato(
-    archivo: str,
-    funcion: str,
-    side_effects: list[str],
-    rn: list[str] | None = None,
-    input_desc: str | None = None,
-    output_desc: str | None = None,
+    descripcion_nl: str,
+    archivo: str | None = None,
+    funcion: str | None = None,
 ) -> dict[str, Any]:
-    """Tool 14: Crea un CONTRATO para una función desde lenguaje natural.
+    """Tool 14: Sugiere un CONTRATO desde lenguaje natural.
 
-    Genera el docstring con CONTRATO formateado correctamente.
-    El agente debe confirmar con el usuario antes de escribir.
+    El dueño dice QUÉ quiere en lenguaje simple.
+    El tool sugiere cómo se vería el CONTRATO.
+    El agente completa los detalles y confirma con el usuario.
     """
     from pathlib import Path
 
-    file_path = Path(archivo)
-    if not file_path.exists():
-        return {"error": f"Archivo no encontrado: {archivo}"}
+    # Analizar la descripción para sugerir campos
+    desc_lower = descripcion_nl.lower()
 
-    # Construir CONTRATO
+    # Detectar side effects
+    side_effects_sugeridos = []
+    if any(w in desc_lower for w in ["enviar", "email", "correo", "notificar", "mail"]):
+        side_effects_sugeridos.append("email")
+    if any(w in desc_lower for w in ["guardar", "crear", "actualizar", "eliminar", "base de datos", "bd"]):
+        side_effects_sugeridos.append("db_write")
+    if any(w in desc_lower for w in ["log", "audit", "bitacora", "registro"]):
+        side_effects_sugeridos.append("audit")
+    if any(w in desc_lower for w in ["cache", "memoria"]):
+        side_effects_sugeridos.append("cache")
+
+    # Detectar si es lectura o escritura
+    es_escritura = any(w in desc_lower for w in ["crear", "guardar", "actualizar", "eliminar", "modificar", "enviar"])
+    es_lectura = any(w in desc_lower for w in ["leer", "obtener", "consultar", "buscar", "listar"])
+
+    # Detectar casos borde mencionados
+    borde_sugeridos = []
+    if any(w in desc_lower for w in ["si no", "si el cliente", "si el usuario"]):
+        borde_sugeridos.append("validación de entrada")
+    if any(w in desc_lower for w in ["error", "excepción", "fallo"]):
+        borde_sugeridos.append("manejo de errores")
+
+    # Construir sugerencia de CONTRATO
+    contrato_sugerido = {
+        "input": "completar con los parámetros de la función",
+        "output": "completar con lo que devuelve",
+        "side_effects": side_effects_sugeridos if side_effects_sugeridos else ["completar"],
+        "rn": ["completar con RN-XXX si aplica"],
+        "borde": borde_sugeridos if borde_sugeridos else [],
+    }
+
+    # Construir texto del CONTRATO
     lines = ['    """']
     lines.append(f'    CONTRATO:')
-    lines.append(f'    input: {input_desc or "completar"}')
-    lines.append(f'    output: {output_desc or "completar"}')
-    lines.append(f'    side_effects: [{", ".join(side_effects) if side_effects else "ninguno"}]')
-    if rn:
-        lines.append(f'    rn: [{", ".join(rn)}]')
+    lines.append(f'    input: {contrato_sugerido["input"]}')
+    lines.append(f'    output: {contrato_sugerido["output"]}')
+    lines.append(f'    side_effects: [{", ".join(contrato_sugerido["side_effects"])}]')
+    if contrato_sugerido["rn"] != ["completar con RN-XXX si aplica"]:
+        lines.append(f'    rn: [{", ".join(contrato_sugerido["rn"])}]')
     else:
         lines.append(f'    rn: []')
+    if contrato_sugerido["borde"]:
+        lines.append(f'    borde: [{", ".join(contrato_sugerido["borde"])}]')
     lines.append('    """')
 
     contrato_texto = "\n".join(lines)
 
     return {
-        "archivo": archivo,
-        "funcion": funcion,
-        "contrato_generado": contrato_texto,
-        "lineas_agregar": len(lines),
-        "siguiente_paso": f"Agregar el CONTRATO al docstring de {funcion} en {archivo}",
+        "descripcion_original": descripcion_nl,
+        "contrato_sugerido": contrato_sugerido,
+        "contrato_texto": contrato_texto,
+        "campo_a_completar": [
+            "input: qué recibe la función",
+            "output: qué devuelve la función",
+            "rn: qué RNs de negocio aplica (si alguna)",
+        ],
         "instruccion_agente": (
-            f"Insertar el siguiente CONTRATO al inicio del docstring de la función {funcion} "
-            f"en el archivo {archivo}. Usar modificar_archivo para aplicar el cambio."
+            f"El dueño quiere: {descripcion_nl}. "
+            f"El tool sugiere un CONTRATO con side_effects={side_effects_sugeridos}. "
+            f"Completá los campos marcados y confirmá con el usuario antes de crear."
         ),
     }
 
