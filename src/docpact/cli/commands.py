@@ -1126,6 +1126,43 @@ def cmd_verify_rns(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+def cmd_briefing(args: argparse.Namespace) -> int:
+    """Comando briefing: genera o actualiza el briefing de reglas de negocio."""
+    from docpact.briefing import generar_briefing, leer_briefing
+
+    root = Path(args.path)
+    if not root.exists():
+        print(f"No encontrado: {root}", file=sys.stderr)
+        return 2
+
+    briefing_path, fue_regenerado = generar_briefing(
+        root, force=getattr(args, "force", False)
+    )
+
+    if getattr(args, "json", False):
+        data = {
+            "path": str(briefing_path),
+            "updated": fue_regenerado,
+            "exists": briefing_path.exists(),
+        }
+        if fue_regenerado:
+            data["content"] = leer_briefing(root)
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    elif getattr(args, "show", False):
+        contenido = leer_briefing(root)
+        if contenido:
+            print(contenido)
+        else:
+            print("Briefing no generado", file=sys.stderr)
+            return 1
+    else:
+        if fue_regenerado:
+            print(f"Briefing generado: {briefing_path}")
+        else:
+            print(f"Briefing ya actualizado: {briefing_path}")
+
+    return 0
+
 def _print_rn_results(results: list) -> None:
     """Imprime resultados de verify-rn en formato legible."""
     for r in results:

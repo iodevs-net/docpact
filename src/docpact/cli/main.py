@@ -500,6 +500,38 @@ def main(argv: list[str] | None = None) -> int:
         help="Output estructurado en JSON",
     )
 
+    # briefing
+    briefing_parser = subparsers.add_parser(
+        "briefing",
+        help=(
+            "Generate or update a business rules briefing for AI agents. "
+            "Creates .docpact/briefing.md with project context. "
+            "Auto-updates when code changes."
+        ),
+    )
+    briefing_parser.add_argument(
+        "path",
+        type=str,
+        nargs="?",
+        default=".",
+        help="Project root (default: current directory)",
+    )
+    briefing_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force regeneration even if briefing is up-to-date",
+    )
+    briefing_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Structured JSON output",
+    )
+    briefing_parser.add_argument(
+        "--show",
+        action="store_true",
+        help="Print briefing to stdout instead of saving",
+    )
+
     args = parser.parse_args(argv)
 
     # Dispatch to command handlers
@@ -523,6 +555,7 @@ def main(argv: list[str] | None = None) -> int:
         cmd_llm_judge,
         cmd_traceability,
         cmd_verify_rns,
+        cmd_briefing,
     )
 
     dispatch = {
@@ -545,6 +578,7 @@ def main(argv: list[str] | None = None) -> int:
         "llm-judge": cmd_llm_judge,
         "traceability": cmd_traceability,
         "verify-rn": cmd_verify_rns,
+        "briefing": cmd_briefing,
     }
 
     handler = dispatch.get(args.command)
