@@ -711,6 +711,65 @@ TOOLS = [
             "required": ["archivo", "diff"],
         },
     },
+    {
+        "name": "listar_rns",
+        "description": "Lista TODAS las RNs del proyecto con descripción, funciones que las implementan, y estado. Usa esto cuando el dueño de negocio pregunte 'qué reglas hay' o necesites ver el panorama completo.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "verificar_conflicto",
+        "description": "Verifica si una nueva RN entrará en conflicto con existentes. Detecta duplicados, overrides, y choques de concepto. SIEMPRE usar ANTES de crear una RN nueva.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "rn_descripcion": {
+                    "type": "string",
+                    "description": "Descripción de la RN que querés crear. Ej: 'Los tickets deben tener prioridad asignada antes de 24 horas'",
+                },
+            },
+            "required": ["rn_descripcion"],
+        },
+    },
+    {
+        "name": "crear_rn",
+        "description": "Crea una nueva RN en el REGISTRO.md. VALIDAR PRIMERO con verificar_conflicto. El agente DEBE confirmar con el usuario antes de ejecutar.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "rn_id": {
+                    "type": "string",
+                    "description": "ID de la RN. Formato: RN-[CATEGORIA]-[NUMERO]. Ej: 'RN-TKT-001', 'RN-FAC-002'",
+                },
+                "descripcion": {
+                    "type": "string",
+                    "description": "Descripción clara de la regla de negocio. Ej: 'Los tickets deben ser respondidos en menos de 4 horas hábiles'",
+                },
+                "archivo_registro": {
+                    "type": "string",
+                    "description": "Ruta al REGISTRO.md (default: docs/reglas-del-negocio/REGISTRO.md)",
+                    "default": "docs/reglas-del-negocio/REGISTRO.md",
+                },
+            },
+            "required": ["rn_id", "descripcion"],
+        },
+    },
+    {
+        "name": "explicar_rn",
+        "description": "Explica una RN en lenguaje simple para el dueño de negocio. Traduce técnica a natural: qué regla define, quién la implementa, si está verificada, y estado actual.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "rn_id": {
+                    "type": "string",
+                    "description": "ID de la RN a explicar. Ej: 'RN-TKT-001'",
+                },
+            },
+            "required": ["rn_id"],
+        },
+    },
 ]
 
 
@@ -752,6 +811,232 @@ def tool_modificar_archivo(archivo: str, diff: str) -> dict[str, Any]:
             for v in resultado.violations
         ],
     }
+def tool_listar_rns() -> dict[str, Any]:
+    """Tool 9: Lista todas las RNs del proyecto con sus descripciones.
+
+    Retorna lista completa de RNs: ID, descripción, funciones que la implementan,
+    si tiene test, y si está en el registro. Útil para que el dueño de negocio
+    vea qué reglas existen.
+    """
+    if _index is None:
+        return {"error": "Índice no cargado"}
+
+    rns = []
+    for rn_id, rn in sorted(_index["rns"].items()):
+        rns.append({
+            "id": rn_id,
+            "descripcion": rn["descripcion"],
+            "funciones": [f["funcion"] for f in rn.get("funciones", [])],
+            "tiene_test": rn.get("tiene_test", False),
+            "en_registro": rn.get("en_registro", False),
+        })
+
+    return {
+        "rns": rns,
+        "total": len(rns),
+        "con_test": sum(1 for r in rns if r["tiene_test"]),
+        "en_registro": sum(1 for r in rns if r["en_registro"]),
+    }
+
+
+def _calcular_similitud(a: str, b: str) -> float:
+    """Calcula similitud entre dos strings usando keywords compartidas.
+
+    Returns: Score entre 0 y 1. Mayor = más similar.
+    """
+    words_a = set(a.lower().split())
+    words_b = set(b.lower().split())
+    # Remover palabras vacías comunes
+    stopwords = {"el", "la", "los", "las", "un", "una", "de", "del", "en", "que", "y", "o", "para", "por", "con", "sin", "no", "si", "se", "al", "es", "son", "ha", "hay", "como", "más", "menos", "todo", "toda", "este", "esta", "ese", "esa"}
+    words_a -= stopwords
+    words_b -= stopwords
+
+    if not words_a or not words_b:
+        return 0.0
+
+    intersection = words_a & words_b
+    union = words_a | words_b
+    return len(intersection) / len(union) if union else 0.0
+
+
+def tool_verificar_conflicto(rn_descripcion: str) -> dict[str, Any]:
+    """Tool 10: Verifica si una nueva RN entrará en conflicto con existentes.
+
+    Analiza:
+    - Conflictos directos: misma entidad, regla opuesta
+    - Overrides: misma función/concepto, comportamiento diferente
+    - Duplicados: descripción muy similar a una existente
+
+    Retorna lista de RNs potencialmente conflictivas con explicación.
+    """
+    if _index is None:
+        return {"error": "Índice no cargado"}
+
+    conflictos = []
+    desc_lower = rn_descripcion.lower()
+
+    for rn_id, rn in _index["rns"].items():
+        existente_desc = rn["descripcion"].lower()
+
+        # 1. Duplicado casi exacto (similitud > 0.7)
+        similitud = _calcular_similitud(rn_descripcion, rn["descripcion"])
+        if similitud > 0.7:
+            conflictos.append({
+                "tipo": "duplicado",
+                "rn_id": rn_id,
+                "descripcion": rn["descripcion"],
+                "similitud": round(similitud, 2),
+                "explicacion": f"La RN propuesta es muy similar a {rn_id}. Podría ser un duplicado.",
+                "accion": f"Revisá si es la misma regla. Si lo es, usá {rn_id} en lugar de crear una nueva.",
+            })
+            continue
+
+        # 2. Misma entidad/concepto (keywords compartidos significativos)
+        similitud_concepto = _calcular_similitud(rn_descripcion, rn["descripcion"])
+        if similitud_concepto > 0.4:
+            conflictos.append({
+                "tipo": "mismo_concepto",
+                "rn_id": rn_id,
+                "descripcion": rn["descripcion"],
+                "similitud": round(similitud_concepto, 2),
+                "explicacion": f"La RN propuesta trata un tema similar a {rn_id}. Verificá que no choquen.",
+                "accion": "Compará las dos reglas. Si definen comportamientos diferentes para el mismo caso, una sobreescribe a la otra.",
+            })
+
+        # 3. Override potencial: misma función afectada
+        if rn.get("funciones"):
+            for func in rn["funciones"]:
+                func_name = func.get("funcion", "").lower()
+                # Si la descripción nueva menciona la misma función
+                if func_name and func_name in desc_lower:
+                    conflictos.append({
+                        "tipo": "override",
+                        "rn_id": rn_id,
+                        "descripcion": rn["descripcion"],
+                        "funcion_afectada": func["funcion"],
+                        "explicacion": f"La RN propuesta afecta la función '{func['funcion']}', que ya está regulada por {rn_id}.",
+                        "accion": f"Definí si la nueva regla reemplaza o complementa a {rn_id}. Si reemplaza, actualizá {rn_id} en lugar de crear una nueva.",
+                    })
+
+    return {
+        "tiene_conflictos": len(conflictos) > 0,
+        "conflictos": conflictos,
+        "total_conflictos": len(conflictos),
+        "descripcion_evaluada": rn_descripcion,
+        "consejo": (
+            "Encontré posibles conflictos. Revisá cada uno antes de crear la RN."
+            if conflictos
+            else "No detecté conflictos. Podés proceder a crear la RN."
+        ),
+    }
+
+
+def tool_crear_rn(rn_id: str, descripcion: str, archivo_registro: str = "docs/reglas-del-negocio/REGISTRO.md") -> dict[str, Any]:
+    """Tool 11: Crea una nueva RN en el REGISTRO.md.
+
+    Agrega la RN al registro y retorna la línea agregada.
+    El agente debe confirmar con el usuario antes de ejecutar.
+    Primero usar verificar_conflicto para validar.
+    """
+    import re
+    from pathlib import Path
+
+    if _index is None:
+        return {"error": "Índice no cargado"}
+
+    # Validar formato del ID
+    if not re.match(r"^RN-[\w-]+$", rn_id):
+        return {
+            "error": f"Formato de ID inválido: '{rn_id}'. Debe ser 'RN-XXX' (ej: RN-TKT-001, RN-FAC-002)",
+            "formato_esperado": "RN-[CATEGORIA]-[NUMERO]",
+        }
+
+    # Verificar que no exista
+    if rn_id in _index["rns"]:
+        return {
+            "error": f"La RN '{rn_id}' ya existe.",
+            "rn_existente": _index["rns"][rn_id],
+            "sugerencia": "Usá obtener_rn para ver los detalles, o elegí otro ID.",
+        }
+
+    # Construir línea para REGISTRO.md
+    linea = f"- **{rn_id}**: {descripcion}"
+
+    # Escribir al archivo
+    registro_path = Path(archivo_registro)
+    if not registro_path.exists():
+        registro_path.parent.mkdir(parents=True, exist_ok=True)
+        registro_path.write_text(f"# Registro de Reglas de Negocio\n\n{linea}\n", encoding="utf-8")
+    else:
+        with open(registro_path, "a", encoding="utf-8") as f:
+            f.write(f"\n{linea}")
+
+    return {
+        "creada": True,
+        "rn_id": rn_id,
+        "descripcion": descripcion,
+        "archivo": str(registro_path),
+        "linea_agregada": linea,
+        "siguiente_paso": f"Agregar 'rn: [{rn_id}]' al CONTRATO de la función que la implementa.",
+    }
+
+
+def tool_explicar_rn(rn_id: str) -> dict[str, Any]:
+    """Tool 12: Explica una RN en lenguaje simple para el dueño de negocio.
+
+    Toma una RN técnica y la traduce a:
+    - Qué regla define (en lenguaje simple)
+    - Qué código la implementa
+    - Si tiene test (está verificada)
+    - Estado: completa o necesita implementación
+    """
+    if _index is None:
+        return {"error": "Índice no cargado"}
+
+    rn = _index["rns"].get(rn_id)
+    if not rn:
+        # Buscar parcial
+        coincidencias = [
+            rid for rid in _index["rns"] if rn_id.lower() in rid.lower()
+        ]
+        return {
+            "existe": False,
+            "busqueda": rn_id,
+            "coincidencias_parciales": coincidencias[:5],
+            "sugerencia": "Verificá el ID. Podés usar listar_rns para ver todas las disponibles.",
+        }
+
+    # Construir explicación simple
+    funcs = rn.get("funciones", [])
+    funcs_nombres = [f["funcion"] for f in funcs]
+
+    # Determinar estado
+    if not funcs:
+        estado = "PENDIENTE - No hay código que la implemente"
+        estado_emoji = "⏳"
+    elif rn.get("tiene_test"):
+        estado = "COMPLETA - Implementada y verificada con test"
+        estado_emoji = "✅"
+    else:
+        estado = "PARCIAL - Implementada pero sin test de verificación"
+        estado_emoji = "⚠️"
+
+    return {
+        "existe": True,
+        "id": rn_id,
+        "que_es": rn["descripcion"],
+        "quien_la_implementa": funcs_nombres if funcs else ["Nadie aún"],
+        "donde_vive": [f["archivo"] for f in funcs] if funcs else [],
+        "tiene_test": rn.get("tiene_test", False),
+        "test_file": rn.get("test"),
+        "estado": estado,
+        "resumen_para_dueno": (
+            f"La regla '{rn_id}' dice: {rn['descripcion']}. "
+            f"{'Está implementada en: ' + ', '.join(funcs_nombres) + '.' if funcs else 'Todavía no tiene código que la cumpla.'} "
+            f"{'Tiene test que la verifica.' if rn.get('tiene_test') else 'No tiene test aún.'}"
+        ),
+    }
+
 
 def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
     """Dispatch tool call to the right function."""
@@ -779,6 +1064,16 @@ def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
             args.get("archivo", ""),
             args.get("diff", ""),
         ),
+        "listar_rns": lambda: tool_listar_rns(),
+        "verificar_conflicto": lambda: tool_verificar_conflicto(
+            args.get("rn_descripcion", "")
+        ),
+        "crear_rn": lambda: tool_crear_rn(
+            args.get("rn_id", ""),
+            args.get("descripcion", ""),
+            args.get("archivo_registro", "docs/reglas-del-negocio/REGISTRO.md"),
+        ),
+        "explicar_rn": lambda: tool_explicar_rn(args.get("rn_id", "")),
     }
 
     fn = dispatch.get(tool_name)
