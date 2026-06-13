@@ -15,6 +15,8 @@ import json
 import logging
 import sys
 from pathlib import Path
+from docpact.checker.rn_verifier import print_results as _print_rn_results
+from docpact.checker.rn_verifier import verify_all_rns
 
 logger = logging.getLogger("docpact.cli")
 
@@ -424,6 +426,22 @@ def main(argv: list[str] | None = None) -> int:
         help="Solo afectar archivos modificados vs HEAD (git diff)",
     )
 
+    # ├─ verify-rn — verifica patrones RN hardcoded en código
+    verify_rn_parser = subparsers.add_parser(
+        "verify-rn", help="Verificar RN patterns existen en código fuente"
+    )
+    verify_rn_parser.add_argument(
+        "--project-root",
+        type=str,
+        required=True,
+        help="Raíz del proyecto a analizar",
+    )
+    verify_rn_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output estructurado en JSON",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "extract":
@@ -462,6 +480,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_llm_judge(args)
     elif args.command == "traceability":
         return _cmd_traceability(args)
+    elif args.command == "verify-rn":
+        return _cmd_verify_rns(args)
 
     else:
         parser.print_help()
@@ -1643,6 +1663,20 @@ def _cmd_traceability(args: argparse.Namespace) -> int:
         1 for entry in matrix.values() if entry["status"] in ("ORPHAN", "DECLARED_ONLY")
     )
     return 1 if problematic else 0
+
+
+def _cmd_verify_rns(args: argparse.Namespace) -> int:
+    """Comando verify-rn: verifica que patrones RN existan en código fuente."""
+    project_root = Path(args.project_root).resolve()
+    results = verify_all_rns(project_root)
+
+    if getattr(args, "json", False):
+        print(json.dumps(results, indent=2, ensure_ascii=False))
+    else:
+        _print_rn_results(results)
+
+    failed = sum(1 for r in results if r["status"] == "FAIL")
+    return 1 if failed else 0
 
 
 def _es_excluido(path: Path) -> bool:
