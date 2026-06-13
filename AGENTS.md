@@ -49,7 +49,7 @@ Pipeline architecture with clear layer separation:
 
 **Layer 5 — Interfaces**
 - CLI (`cli/main.py` 67 lines + `cli/commands/` 7 modules, 21 commands)
-- MCP server (`mcp_server.py`, JSON-RPC 2.0 over stdio, 12 tools)
+- MCP server (`mcp_server.py`, JSON-RPC 2.0 over stdio, 18 tools)
 - Python API (`api.py`, thin wrappers)
 
 **Key data flow**: Source files → AST parse → docstring extraction → lexer tokens → `Contrato` model → checker pipeline → `Hallazgo` list → `ResultadoProyecto` → report. For MCP: source files → index generation (one-time) → RAM index → tool queries (<5ms).
@@ -157,7 +157,7 @@ docpact mcp-doctor                  # MCP server diagnostics
 | `src/docpact/parser/lexer.py` | CONTRATO block tokenizer |
 | `src/docpact/parser/parser.py` | Token-to-`Contrato` model converter |
 | `src/docpact/parser/extractor.py` | Python AST docstring extractor |
-| `src/docpact/mcp_server.py` | MCP server (12 tools, JSON-RPC over stdio) |
+| `src/docpact/mcp_server.py` | MCP server (18 tools, JSON-RPC over stdio) |
 | `src/docpact/index.py` | Pre-calculated index generator for MCP |
 | `src/docpact/cli/main.py` | CLI entry point (67 lines) + `commands/` package (7 modules) |
 | `src/docpact/runtime/pytest_plugin.py` | Pytest plugin for runtime enforcement |
