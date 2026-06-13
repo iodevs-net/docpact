@@ -840,13 +840,33 @@ def tool_listar_rns() -> dict[str, Any]:
 
 
 def _calcular_similitud(a: str, b: str) -> float:
-    """Calcula similitud entre dos strings usando keywords compartidas.
+    """Calcula similitud entre dos strings.
+
+    Usa FastEmbed embeddings si está disponible (similitud semántica real).
+    Fallback a keywords compartidas si no hay embedder.
 
     Returns: Score entre 0 y 1. Mayor = más similar.
     """
+    # Intentar con FastEmbed si está disponible
+    if _embedder is not None:
+        try:
+            import math
+            from docpact.index import _cosine_similarity
+
+            embeddings = list(_embedder.embed([a, b]))
+            if len(embeddings) == 2:
+                sim = _cosine_similarity(
+                    [float(x) for x in embeddings[0]],
+                    [float(x) for x in embeddings[1]],
+                )
+                # Normalizar de [-1, 1] a [0, 1]
+                return max(0.0, (sim + 1.0) / 2.0)
+        except Exception:
+            pass  # Fallback a keywords
+
+    # Fallback: similitud por keywords compartidas
     words_a = set(a.lower().split())
     words_b = set(b.lower().split())
-    # Remover palabras vacías comunes
     stopwords = {"el", "la", "los", "las", "un", "una", "de", "del", "en", "que", "y", "o", "para", "por", "con", "sin", "no", "si", "se", "al", "es", "son", "ha", "hay", "como", "más", "menos", "todo", "toda", "este", "esta", "ese", "esa"}
     words_a -= stopwords
     words_b -= stopwords
