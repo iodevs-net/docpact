@@ -134,3 +134,78 @@ def cmd_config_suggest(args: argparse.Namespace) -> int:
         print(f"\n✅ {len(sugerencias)} bloques escritos a {config_path}")
 
     return 0
+
+
+def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
+    """Register fix, init, and config-suggest subcommands."""
+    # ── fix ──
+    fix_parser = subparsers.add_parser(
+        "fix",
+        help=(
+            "Auto-fix CONTRATO signature warnings. "
+            "Updates docstrings to match actual function signatures (argument names, types)"
+        ),
+    )
+    fix_parser.add_argument("path", type=str, help="Archivo o directorio a corregir")
+    fix_parser.add_argument(
+        "--diff",
+        action="store_true",
+        help="Solo afectar archivos modificados vs HEAD (git diff)",
+    )
+    fix_parser.set_defaults(func=cmd_fix)
+
+    # ── init ──
+    init_parser = subparsers.add_parser(
+        "init",
+        help=(
+            "Generate CONTRATO skeletons for functions missing them. "
+            "Use --batch to scaffold an entire directory, or --function for one"
+        ),
+    )
+    init_parser.add_argument("path", type=str, help="Archivo o directorio")
+    init_parser.add_argument(
+        "--function", type=str, default=None, help="Nombre específico de función"
+    )
+    init_parser.add_argument(
+        "--batch", action="store_true", help="Procesar todo el directorio"
+    )
+    init_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Forzar generación incluso si la función tiene docstring sin CONTRATO",
+    )
+    init_parser.set_defaults(func=cmd_init)
+
+    # ── config-suggest ──
+    suggest_parser = subparsers.add_parser(
+        "config-suggest",
+        help=(
+            "Suggest docpact.toml patterns for RNs without validators. "
+            "Use when 'verify-rn' reports NO_PATTERN for a business rule"
+        ),
+    )
+    suggest_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help="Raíz del proyecto a analizar (default: directorio actual)",
+    )
+    suggest_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Escribir las sugerencias a docpact.toml (default: dry-run)",
+    )
+    suggest_parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.5,
+        help="Confidence mínima para incluir una sugerencia (0-1, default: 0.5)",
+    )
+    suggest_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output estructurado en JSON",
+    )
+    suggest_parser.set_defaults(func=cmd_config_suggest)
+
+    return fix_parser

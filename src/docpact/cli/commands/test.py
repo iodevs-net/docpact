@@ -114,3 +114,64 @@ def cmd_test_quality(args: argparse.Namespace) -> int:
             for i in issues:
                 print(f"  {i.mensaje}")
     return 1 if issues else 0
+
+
+def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
+    """Register test, test-quality, and llm-judge subcommands."""
+    # ── test ──
+    test_parser = subparsers.add_parser(
+        "test",
+        help=(
+            "Execute RN business rule tests with pytest. "
+            "Runs tests/rn/ directory to verify that declared rules actually work at runtime"
+        ),
+    )
+    test_parser.add_argument("path", type=str, help="Archivo o directorio a verificar")
+    test_parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Ruta al archivo de configuración docpact.toml",
+    )
+    test_parser.set_defaults(func=cmd_test)
+
+    # ── test-quality ──
+    quality_parser = subparsers.add_parser(
+        "test-quality",
+        help="Detecta tests placeholder (cuerpo vacio, assert True, etc.)",
+    )
+    quality_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help="Raíz del proyecto (default: directorio actual)",
+    )
+    quality_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output estructurado en JSON",
+    )
+    quality_parser.set_defaults(func=cmd_test_quality)
+
+    # ── llm-judge ──
+    llm_judge_parser = subparsers.add_parser(
+        "llm-judge",
+        help="Evalua si un test verifica la regla usando un LLM (OpenAI-compatible)",
+    )
+    llm_judge_parser.add_argument(
+        "test_file", type=str, help="Path al archivo de test (.py)"
+    )
+    llm_judge_parser.add_argument(
+        "--rn-descripcion",
+        type=str,
+        required=True,
+        help="Descripcion de la regla de negocio que el test deberia verificar",
+    )
+    llm_judge_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output estructurado en JSON",
+    )
+    llm_judge_parser.set_defaults(func=cmd_llm_judge)
+
+    return test_parser

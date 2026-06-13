@@ -186,3 +186,69 @@ def cmd_traceability(args: argparse.Namespace) -> int:
         1 for entry in matrix.values() if entry["status"] in ("ORPHAN", "DECLARED_ONLY")
     )
     return 1 if problematic else 0
+
+
+def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
+    """Register extract, index, and traceability subcommands."""
+    # ── extract ──
+    extract_parser = subparsers.add_parser(
+        "extract",
+        help=(
+            "Extract CONTRATOs from Python/TypeScript/JSX files as JSON or text. "
+            "Use to inspect what docpact sees before running check"
+        ),
+    )
+    extract_parser.add_argument(
+        "path", type=str, help="Archivo o directorio a analizar"
+    )
+    extract_parser.add_argument(
+        "--include-private",
+        action="store_true",
+        help="Incluir funciones privadas (prefijo _)",
+    )
+    extract_parser.add_argument(
+        "--format", choices=["text", "json"], default="text", help="Formato de salida"
+    )
+    extract_parser.set_defaults(func=cmd_extract)
+
+    # ── index ──
+    index_parser = subparsers.add_parser(
+        "index", help="Genera índice pre-calculado para el MCP server"
+    )
+    index_parser.add_argument(
+        "path",
+        type=str,
+        nargs="?",
+        default=".",
+        help="Raíz del proyecto (default: directorio actual)",
+    )
+    index_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Regenerar índice aunque ya exista",
+    )
+    index_parser.set_defaults(func=cmd_index)
+
+    # ── traceability ──
+    traceability_parser = subparsers.add_parser(
+        "traceability",
+        help=(
+            "Matriz de trazabilidad: cruza RNs declaradas con tests existentes. "
+            "Muestra %% de cobertura por módulo. "
+            "Un 100%% significa que toda regla declarada tiene al menos un test"
+        ),
+    )
+    traceability_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help="Raíz del proyecto (default: directorio actual)",
+    )
+    traceability_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output estructurado en JSON",
+    )
+    traceability_parser.set_defaults(func=cmd_traceability)
+
+    return extract_parser

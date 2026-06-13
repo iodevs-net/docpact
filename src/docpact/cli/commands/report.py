@@ -80,3 +80,73 @@ def cmd_briefing(args: argparse.Namespace) -> int:
             print(f"Briefing ya actualizado: {briefing_path}")
 
     return 0
+
+
+def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
+    """Register report and briefing subcommands."""
+    # ── report ──
+    report_parser = subparsers.add_parser(
+        "report",
+        help=(
+            "Reporte delta: muestra reglas declaradas en REGISTRO.md vs evidencia en código. "
+            "Útil para identificar RNs sin implementación o código sin CONTRATO"
+        ),
+    )
+    report_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help="Raíz del proyecto (default: directorio actual)",
+    )
+    report_parser.add_argument(
+        "--registro",
+        type=str,
+        default=None,
+        help="Path al REGISTRO.md (default: docs/reglas-del-negocio/REGISTRO.md)",
+    )
+    report_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output estructurado en JSON (para agentes)",
+    )
+    report_parser.add_argument(
+        "--ci",
+        action="store_true",
+        help="Modo CI: falla si RNs con marcador no tienen test",
+    )
+    report_parser.set_defaults(func=cmd_report)
+
+    # ── briefing ──
+    briefing_parser = subparsers.add_parser(
+        "briefing",
+        help=(
+            "Generate or update a business rules briefing for AI agents. "
+            "Creates .docpact/briefing.md with project context. "
+            "Auto-updates when code changes."
+        ),
+    )
+    briefing_parser.add_argument(
+        "path",
+        type=str,
+        nargs="?",
+        default=".",
+        help="Project root (default: current directory)",
+    )
+    briefing_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force regeneration even if briefing is up-to-date",
+    )
+    briefing_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Structured JSON output",
+    )
+    briefing_parser.add_argument(
+        "--show",
+        action="store_true",
+        help="Print briefing to stdout instead of saving",
+    )
+    briefing_parser.set_defaults(func=cmd_briefing)
+
+    return report_parser

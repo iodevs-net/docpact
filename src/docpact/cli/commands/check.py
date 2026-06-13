@@ -489,3 +489,174 @@ def _print_rn_results(results: list) -> None:
     for r in results:
         icono = "✅" if r["status"] == "PASS" else "❌" if r["status"] == "FAIL" else "ℹ️"
         print(f"{icono} {r['rn_id']}: {r['mensaje']}")
+
+
+def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
+    """Register check, lint, validate, and verify-rn subcommands."""
+    # ── check ──
+    check_parser = subparsers.add_parser(
+        "check",
+        help=(
+            "Verifica CONTRATOS: side_effects, dependencias y RNs fake. "
+            "Ejecutar después de escribir o modificar código. "
+            "Para arreglar errores: agregar CONTRATO faltante o corregir side_effects en el docstring"
+        ),
+    )
+    check_parser.add_argument("path", type=str, help="Archivo o directorio a verificar")
+    check_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Falla si hay funciones públicas sin CONTRATO",
+    )
+    check_parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Ruta al archivo de configuración docpact.toml",
+    )
+    check_parser.add_argument(
+        "--diff",
+        action="store_true",
+        help="Solo verificar archivos modificados vs HEAD (git diff)",
+    )
+    check_parser.add_argument(
+        "--report", action="store_true", help="Reporte detallado con sugerencias"
+    )
+    check_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Auto-genera CONTRATOs para funciones sin ninguno (--strict implícito)",
+    )
+    check_parser.add_argument(
+        "--min-score",
+        type=int,
+        default=0,
+        help="DEPRECADO: usar --max-rns-fake y --max-rns-huerfanas. Falla si el score (vanity metric) es menor",
+    )
+    check_parser.add_argument(
+        "--max-rns-fake",
+        type=int,
+        default=0,
+        help="Máximo de RNs fake permitidas (mentiras del agente en CONTRATOS). Falla si se supera. Default: 0",
+    )
+    check_parser.add_argument(
+        "--max-rns-huerfanas",
+        type=int,
+        default=None,
+        help="Máximo de RNs huerfanas permitidas (en REGISTRO sin CONTRATO). Falla si se supera. Default: no falla",
+    )
+    check_parser.add_argument(
+        "--show-legacy-score",
+        action="store_true",
+        help="Muestra el score AI-Native deprecado (0-100). Por default se ocultan las métricas vanidosas",
+    )
+    check_parser.add_argument(
+        "--no-run-tests",
+        action="store_true",
+        help="Desactiva la ejecución de tests dinámicos de Reglas de Negocio con pytest",
+    )
+    check_parser.add_argument(
+        "--no-runtime",
+        action="store_true",
+        help="Desactiva el wrapper runtime de side_effects en pytest (evita ruido en tracebacks)",
+    )
+    check_parser.set_defaults(func=cmd_check)
+
+    # ── lint ──
+    lint_parser = subparsers.add_parser(
+        "lint",
+        help=(
+            "Static-only CONTRATO analysis (no pytest). "
+            "Checks docstring syntax, side_effects declarations, and RN fake detection. "
+            "Faster than 'check' — ideal for pre-commit hooks"
+        ),
+    )
+    lint_parser.add_argument("path", type=str, help="Archivo o directorio a verificar")
+    lint_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Falla si hay funciones públicas sin CONTRATO",
+    )
+    lint_parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Ruta al archivo de configuración docpact.toml",
+    )
+    lint_parser.add_argument(
+        "--diff",
+        action="store_true",
+        help="Solo verificar archivos modificados vs HEAD (git diff)",
+    )
+    lint_parser.add_argument(
+        "--min-score",
+        type=int,
+        default=0,
+        help="DEPRECADO: usar --max-rns-fake y --max-rns-huerfanas. Falla si el score (vanity metric) es menor",
+    )
+    lint_parser.add_argument(
+        "--max-rns-fake",
+        type=int,
+        default=0,
+        help="Máximo de RNs fake permitidas. Falla si se supera. Default: 0",
+    )
+    lint_parser.add_argument(
+        "--max-rns-huerfanas",
+        type=int,
+        default=None,
+        help="Máximo de RNs huerfanas permitidas. Falla si se supera. Default: no falla",
+    )
+    lint_parser.add_argument(
+        "--show-legacy-score",
+        action="store_true",
+        help="Muestra el score AI-Native deprecado (0-100). Por default se ocultan las métricas vanidosas",
+    )
+    lint_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Auto-genera CONTRATOs para funciones sin ninguno (--strict implícito)",
+    )
+    lint_parser.set_defaults(func=cmd_lint)
+
+    # ── validate ──
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help=(
+            "Hook pre-commit: valida CONTRATOS en archivos staged (<1s). "
+            "Solo revisa archivos que se están commiteando. "
+            "Falla si CONTRATOs declarados contradicen la implementación"
+        ),
+    )
+    validate_parser.add_argument(
+        "files", nargs="*", help="Archivos a validar (git staged files si se omite)"
+    )
+    validate_parser.add_argument(
+        "--staged",
+        action="store_true",
+        help="Usar archivos staged de git (default si no se pasan archivos)",
+    )
+    validate_parser.set_defaults(func=cmd_validate)
+
+    # ── verify-rn ──
+    verify_rn_parser = subparsers.add_parser(
+        "verify-rn",
+        help=(
+            "Verifica que patrones de RNs (Reglas de Negocio) existan en código fuente. "
+            "Chequea existencia de patrones y orden de validación. "
+            "Ejecutar antes de cada commit para asegurar que reglas declaradas estén implementadas"
+        ),
+    )
+    verify_rn_parser.add_argument(
+        "--project-root",
+        type=str,
+        required=True,
+        help="Raíz del proyecto a analizar",
+    )
+    verify_rn_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output estructurado en JSON",
+    )
+    verify_rn_parser.set_defaults(func=cmd_verify_rns)
+
+    return check_parser

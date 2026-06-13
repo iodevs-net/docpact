@@ -74,3 +74,65 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(f"\n{'✅' if resultado.ok else '❌'} Doctor: {resultado.resumen()}")
 
     return 0 if resultado.ok else 1
+
+
+def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
+    """Register guard, run, and doctor subcommands."""
+    # ── guard ──
+    guard_parser = subparsers.add_parser(
+        "guard",
+        help="Valida un cambio contra los CONTRATOs antes de aplicarlo",
+    )
+    guard_parser.add_argument(
+        "archivo",
+        type=str,
+        help="Path del archivo a modificar",
+    )
+    guard_parser.add_argument(
+        "diff",
+        type=str,
+        help="El diff o código nuevo a aplicar",
+    )
+    guard_parser.set_defaults(func=cmd_guard)
+
+    # ── run ──
+    run_parser = subparsers.add_parser(
+        "run",
+        help=(
+            "Dynamic verification in a sandbox. "
+            "Executes code and tests in isolation to verify side effects at runtime"
+        ),
+    )
+    run_parser.add_argument(
+        "path",
+        type=str,
+        nargs="?",
+        help="Archivo o directorio a verificar dinámicamente",
+    )
+    run_parser.add_argument("--tests", required=True, help="Directorio con tests")
+    run_parser.add_argument("--max-iterations", type=int, default=10)
+    run_parser.add_argument(
+        "--build", action="store_true", help="Construir imagen sandbox"
+    )
+    run_parser.set_defaults(func=cmd_run)
+
+    # ── doctor ──
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help=(
+            "Self-diagnosis of the docpact ecosystem. "
+            "Checks Python version, installed packages, config files, and project health"
+        ),
+    )
+    doctor_parser.add_argument(
+        "path", type=str, nargs="?", default=".", help="Raíz del proyecto"
+    )
+    doctor_parser.add_argument(
+        "--min-score", type=int, default=90, help="Score mínimo requerido (defecto: 90)"
+    )
+    doctor_parser.add_argument(
+        "--json", action="store_true", help="Salida en formato JSON"
+    )
+    doctor_parser.set_defaults(func=cmd_doctor)
+
+    return guard_parser

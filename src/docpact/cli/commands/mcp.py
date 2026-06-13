@@ -102,3 +102,72 @@ def cmd_install_mcp(args: argparse.Namespace) -> int:
             print(f"   → Reiniciá Claude Code para que cargue la nueva config")
 
     return 0 if result["error"] is None else 1
+
+
+def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
+    """Register mcp, mcp-doctor, and install-mcp subcommands."""
+    # ── mcp ──
+    mcp_parser = subparsers.add_parser(
+        "mcp",
+        help=(
+            "Start MCP server for agent integration (JSON-RPC over stdio). "
+            "Provides docpact tools to AI agents via Model Context Protocol"
+        ),
+    )
+    mcp_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help="Raíz del proyecto (default: directorio actual)",
+    )
+    mcp_parser.set_defaults(func=cmd_mcp)
+
+    # ── mcp-doctor ──
+    mcp_doctor_parser = subparsers.add_parser(
+        "mcp-doctor",
+        help="Diagnostica por qué las tools MCP no cargan en el host (stdio, wrapper, etc.)",
+    )
+    mcp_doctor_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help="Raíz del proyecto (default: directorio actual)",
+    )
+    mcp_doctor_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output estructurado en JSON (para tooling y agentes)",
+    )
+    mcp_doctor_parser.set_defaults(func=cmd_mcp_doctor)
+
+    # ── install-mcp ──
+    install_parser = subparsers.add_parser(
+        "install-mcp",
+        help="Configura docpact como MCP server en el host del agent (OMP/Claude Code)",
+    )
+    install_parser.add_argument(
+        "--project-root",
+        type=str,
+        default=".",
+        help="Raíz del proyecto (default: directorio actual)",
+    )
+    install_parser.add_argument(
+        "--wrapper",
+        type=str,
+        default=None,
+        help="Path al wrapper script (default: scripts/docpact-mcp-wrapper.sh en project-root)",
+    )
+    install_parser.add_argument(
+        "--host",
+        type=str,
+        default=None,
+        help="Forzar host ('omp', 'omp_project', 'claude_code', 'project'). Default: autodetectar",
+    )
+    install_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output estructurado en JSON",
+    )
+    install_parser.set_defaults(func=cmd_install_mcp)
+
+    return mcp_parser
