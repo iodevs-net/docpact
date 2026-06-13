@@ -17,23 +17,16 @@ Use this skill when:
 - Explaining errors to non-technical stakeholders
 
 ## Hard Rules
-
-- ALWAYS run `explicar_errores` BEFORE `check` — check only validates structure, explicar_errores validates behavior
-- ALWAYS run `obtener_briefing` BEFORE writing any code — understand the rules first
-- ALWAYS run `verificar_conflicto` BEFORE creating a new RN — prevent duplicates
-- NEVER assume "0 errors" means "code is correct" — it only means "CONTRATO format is valid"
-- NEVER skip the briefing — it contains all active rules the agent MUST respect
-
-## Decision Gates
-
 | Situation | Tool | Why |
 |-----------|------|-----|
 | Starting work on a project | `obtener_briefing` | Understand all active rules |
 | Before writing code | `buscar_por_intencion` | Find existing patterns |
 | After writing code | `explicar_errores` | Verify behavior, not just format |
+| Finding undeclared rules | `descubrir_reglas` | Discover patterns not yet formalized |
 | Creating a new RN | `verificar_conflicto` | Prevent duplicates/overrides |
 | Explaining to stakeholder | `explicar_errores` + `explicar_rn` | Human-readable output |
 | Committing changes | `validar_cambio` | Pre-commit verification |
+
 
 ## Execution Steps
 
