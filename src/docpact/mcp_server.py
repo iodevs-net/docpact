@@ -1162,6 +1162,31 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "predecir_bugs",
+        "description": (
+            "Analiza código y predice bugs potenciales usando AST.\n"
+            "Detecta: mutable defaults, bare except, resource leaks, variables sin usar.\n\n"
+            "EJEMPLO — Bugs encontrados:\n"
+            "  Llamada: predecir_bugs()\n"
+            "  Retorna: {archivos_escaneados: 50, total_bugs: 23,\n"
+            "    por_severidad: {error: 2, warning: 15, info: 6},\n"
+            "    por_tipo: {mutable_default: 8, bare_except: 5, resource_leak: 3},\n"
+            "    bugs: [{tipo: 'mutable_default', severidad: 'warning',\n"
+            "      mensaje: 'Argumento default mutable en crear_ticket',\n"
+            "      sugerencia: 'Usar None como default',\n"
+            "      archivo: 'tickets.py', linea: 45}]}"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {
+                    "type": "string",
+                    "description": "Raíz del proyecto (default: directorio actual)",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -1876,6 +1901,21 @@ def tool_extraer_rns(project_root: str | None = None) -> dict[str, Any]:
         return {"error": f"Error extrayendo RNs: {e}"}
 
 
+def tool_predecir_bugs(project_root: str | None = None) -> dict[str, Any]:
+    """Tool 22: Predice bugs potenciales en el código.
+
+    Analiza AST y detecta patrones comunes de bugs.
+    """
+    import os
+    root = project_root or os.environ.get("DOCPACT_PROJECT_ROOT", ".")
+
+    try:
+        from docpact.checker.bug_predictor import escanear_proyecto
+        return escanear_proyecto(root)
+    except Exception as e:
+        return {"error": f"Error prediciendo bugs: {e}"}
+
+
 def tool_descubrir_reglas(project_root: str | None = None) -> dict[str, Any]:
     """Tool 20: Descubre reglas de negocio no declaradas en el código.
 
@@ -1897,62 +1937,29 @@ def tool_descubrir_reglas(project_root: str | None = None) -> dict[str, Any]:
 def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
     """Dispatch tool call to the right function."""
     dispatch = {
-        "obtener_contexto_funcion": lambda: tool_obtener_contexto_funcion(
-            args.get("nombre_funcion", "")
-        ),
-        "buscar_por_intencion": lambda: tool_buscar_por_intencion(
-            args.get("intencion", "")
-        ),
-        "validar_cambio": lambda: tool_validar_cambio(
-            args.get("archivo", ""),
-            args.get("diff", ""),
-            ejecutar_tests=args.get("ejecutar_tests", True),
-        ),
+        "obtener_contexto_funcion": lambda: tool_obtener_contexto_funcion(args.get("nombre_funcion", "")),
+        "buscar_por_intencion": lambda: tool_buscar_por_intencion(args.get("intencion", "")),
+        "validar_cambio": lambda: tool_validar_cambio(args.get("archivo", ""), args.get("diff", ""), ejecutar_tests=args.get("ejecutar_tests", True)),
         "obtener_rn": lambda: tool_obtener_rn(args.get("rn_id", "")),
-        "buscar_rns_por_tema": lambda: tool_buscar_rns_por_tema(
-            args.get("tema", "")
-        ),
-        "navegar_referencias": lambda: tool_navegar_referencias(
-            args.get("referencia", "")
-        ),
+        "buscar_rns_por_tema": lambda: tool_buscar_rns_por_tema(args.get("tema", "")),
+        "navegar_referencias": lambda: tool_navegar_referencias(args.get("referencia", "")),
         "obtener_briefing": lambda: tool_obtener_briefing(),
-        "modificar_archivo": lambda: tool_modificar_archivo(
-            args.get("archivo", ""),
-            args.get("diff", ""),
-        ),
+        "modificar_archivo": lambda: tool_modificar_archivo(args.get("archivo", ""), args.get("diff", "")),
         "listar_rns": lambda: tool_listar_rns(),
-        "verificar_conflicto": lambda: tool_verificar_conflicto(
-            args.get("rn_descripcion", "")
-        ),
-        "crear_rn": lambda: tool_crear_rn(
-            args.get("rn_id", ""),
-            args.get("descripcion", ""),
-            args.get("archivo_registro", "docs/reglas-del-negocio/REGISTRO.md"),
-        ),
+        "verificar_conflicto": lambda: tool_verificar_conflicto(args.get("rn_descripcion", "")),
+        "crear_rn": lambda: tool_crear_rn(args.get("rn_id", ""), args.get("descripcion", ""), args.get("archivo_registro", "docs/reglas-del-negocio/REGISTRO.md")),
         "explicar_rn": lambda: tool_explicar_rn(args.get("rn_id", "")),
         "setup_docpact": lambda: tool_setup_docpact(args.get("project_root")),
-        "crear_contrato": lambda: tool_crear_contrato(
-            args.get("archivo", ""),
-            args.get("funcion", ""),
-            args.get("side_effects", []),
-            rn=args.get("rn"),
-            input_desc=args.get("input_desc"),
-            output_desc=args.get("output_desc"),
-        ),
-        "corregir_contrato": lambda: tool_corregir_contrato(
-            args.get("archivo", ""),
-            args.get("funcion", ""),
-            args.get("problema", ""),
-        ),
-        "ejecutar_verificacion": lambda: tool_ejecutar_verificacion(
-            args.get("project_root")
-        ),
+        "crear_contrato": lambda: tool_crear_contrato(args.get("descripcion_nl", ""), args.get("archivo"), args.get("funcion")),
+        "corregir_contrato": lambda: tool_corregir_contrato(args.get("archivo", ""), args.get("funcion", ""), args.get("problema", "")),
+        "ejecutar_verificacion": lambda: tool_ejecutar_verificacion(args.get("project_root")),
         "ejecutar_tests": lambda: tool_ejecutar_tests(args.get("project_root")),
         "generar_reporte": lambda: tool_generar_reporte(args.get("project_root")),
+        "explicar_errores": lambda: tool_explicar_errores(args.get("project_root")),
         "descubrir_reglas": lambda: tool_descubrir_reglas(args.get("project_root")),
         "extraer_rns": lambda: tool_extraer_rns(args.get("project_root")),
+        "predecir_bugs": lambda: tool_predecir_bugs(args.get("project_root")),
     }
-
     fn = dispatch.get(tool_name)
     if fn is None:
         return {"error": f"Tool desconocida: {tool_name}"}
