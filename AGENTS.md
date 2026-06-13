@@ -16,10 +16,10 @@ Pipeline architecture with clear layer separation:
 - Extractors: Python (stdlib `ast`) and TypeScript (regex-based)
 
 **Layer 2 — Verification** (`src/docpact/checker/`)
-- `orchestrator.py` (1500+ lines) coordinates ~10 specialized checkers per function:
+- `orchestrator.py` (884 lines) coordinates 21 specialized checkers per function:
   1. `side_effects.py` — AST walker classifies calls into categories vs declared effects
   2. `transitive_effects.py` — Follows call chains via `ContractIndex` for undeclared effects
-  3. `semantic_rn.py` — Dispatcher for 5 validators: `state_transition`, `no_import`, `required_groups`, `tenant_safe`, `has_pattern`
+  3. `semantic_rn.py` (666 lines) — Dispatcher for 5 validators: `state_transition`, `no_import`, `required_groups`, `tenant_safe`, `has_pattern`
   4. `marker_honesty.py` — Detects decorative # RN-XXX on delegation lines
   5. `rn_checker.py` — Basic # RN-XXX marker verification
   6. `rn_crossref.py` — RN propagation across call boundaries
@@ -30,6 +30,11 @@ Pipeline architecture with clear layer separation:
   11. `boundary_checker.py` — Module isolation rules
   12. `contract_index.py` — Global index for cross-function analysis
   13. `doctor.py` — Autodiagnostic system
+  14. `signature_checker.py` — Function signature validation
+  15. `ts_checker.py` — TypeScript-specific verification
+  16. `ts_sidefx.py` — TypeScript side effects detection
+  17. `rn_patterns.py` — RN pattern matching utilities
+  18. `rn_registry.py` — RN registry management
 
 **Layer 3 — Indexing** (`src/docpact/index.py`)
 - Pre-calculates `.docpact/index.json` with function metadata, RN mappings, test locations
@@ -43,10 +48,9 @@ Pipeline architecture with clear layer separation:
 - Modes: `strict` (raises) and `warning` (emits warnings)
 
 **Layer 5 — Interfaces**
-- CLI (`cli/main.py`, 1761 lines, 15+ commands)
-- MCP server (`mcp_server.py`, JSON-RPC 2.0 over stdio, 6 tools)
+- CLI (`cli/main.py` 620 lines + `cli/commands.py` 1191 lines, 15+ commands)
+- MCP server (`mcp_server.py`, JSON-RPC 2.0 over stdio, 12 tools)
 - Python API (`api.py`, thin wrappers)
-- Conversational (`conversational.py`, regex-based NLP intent mapping)
 
 **Key data flow**: Source files → AST parse → docstring extraction → lexer tokens → `Contrato` model → checker pipeline → `Hallazgo` list → `ResultadoProyecto` → report. For MCP: source files → index generation (one-time) → RAM index → tool queries (<5ms).
 
@@ -54,14 +58,12 @@ Pipeline architecture with clear layer separation:
 
 | Path | Purpose |
 |------|---------|
-| `src/docpact/parser/` | Lexer, parser, AST extractor (Python), regex extractor (TypeScript) |
-| `src/docpact/checker/` | 15+ specialized verification modules |
+| `src/docpact/checker/` | 21 specialized verification modules |
 | `src/docpact/models/` | Frozen dataclasses: `Contrato`, `SideEffect`, `ReglaNegocio`, etc. |
 | `src/docpact/runtime/` | Pytest plugin, sentinels, `ContractViolationError` |
 | `src/docpact/cli/` | CLI entry point (`main.py`) + subcommands (`fix.py`, `init.py`) |
 | `src/docpact/schema/` | JSON Schema (`contrato-v1.json`) + validator |
-| `tests/` | 36+ test files, flat structure, fixtures dirs |
-| `tests/fixtures/` | Python CONTRATO example files (4 files) |
+| `tests/` | 35 test files, flat structure, fixtures dirs |
 | `tests/fixtures_ts/` | TypeScript/TSX CONTRATO example files (17 files) |
 | `docs/` | Protocol spec, side effects patterns, marker honesty docs |
 | `docs/investigacion/` | 9 LLM research reports on AI-native code |
@@ -151,17 +153,22 @@ docpact mcp-doctor                  # MCP server diagnostics
 | `src/docpact/__init__.py` | Package root, version declaration |
 | `src/docpact/config.py` | `DocpactConfig` — reads `docpact.toml`, compiles patterns |
 | `src/docpact/models/contrato.py` | Core domain models (all frozen dataclasses) |
-| `src/docpact/checker/orchestrator.py` | Central verification pipeline (1524 lines) |
+| `src/docpact/checker/orchestrator.py` | Central verification pipeline (884 lines) |
 | `src/docpact/parser/lexer.py` | CONTRATO block tokenizer |
 | `src/docpact/parser/parser.py` | Token-to-`Contrato` model converter |
 | `src/docpact/parser/extractor.py` | Python AST docstring extractor |
-| `src/docpact/mcp_server.py` | MCP server (JSON-RPC over stdio, 6 tools) |
+| `src/docpact/mcp_server.py` | MCP server (12 tools, JSON-RPC over stdio) |
 | `src/docpact/index.py` | Pre-calculated index generator for MCP |
-| `src/docpact/cli/main.py` | CLI entry point (1761 lines, 15+ commands) |
+| `src/docpact/cli/main.py` | CLI entry point (620 lines) + `commands.py` (1191 lines) |
 | `src/docpact/runtime/pytest_plugin.py` | Pytest plugin for runtime enforcement |
 | `src/docpact/runtime/sentinels.py` | DB/disk/email interceptors |
 | `src/docpact/schema/contrato-v1.json` | JSON Schema (draft-07) for CONTRATO validation |
 | `.github/workflows/ci.yml` | CI: Python 3.12+3.13, pytest, self-check |
+| `src/docpact/guard.py` | Guard system for runtime enforcement (245 lines) |
+| `src/docpact/briefing.py` | Briefing generation for context handoff (324 lines) |
+| `src/docpact/llm_generator.py` | LLM-powered code generation (205 lines) |
+| `src/docpact/llm_judge.py` | LLM-based judgment/scoring (179 lines) |
+| `src/docpact/bridge.py` | Bridge between components (128 lines) |
 
 ## Runtime/Tooling Preferences
 
@@ -178,11 +185,10 @@ docpact mcp-doctor                  # MCP server diagnostics
 
 - **Framework**: pytest >=7 with pytest-cov >=4
 - **Config**: `pyproject.toml` `[tool.pytest.ini_options]` — `testpaths=['tests']`, `addopts='-v --cov=src/docpact --cov-report=term-missing'`
-- **36+ test files**, ~300KB total, flat structure (no subdirectories for test files)
 - **No conftest.py** — all fixtures defined inline per test file
 - **Primary fixture**: `tmp_path` (used in 20+ files for temp project structures)
 - **Mocking**: `unittest.mock.patch` for HTTP, `monkeypatch` for env vars/module patching
-- **Assertions**: Pure pytest style (`assert`, `pytest.raises`), never unittest assertions
+- **35 test files**, ~300KB total, flat structure (no subdirectories for test files)
 - **Test classes**: Used for logical grouping only (no `__init__`, no setup/teardown)
 - **Helper functions**: Module-level `_mock_*`, `_make_*`, `_write_*` prefixes
 - **Coverage**: Configured but no threshold enforced (`--cov-fail-under` absent)
