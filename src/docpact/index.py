@@ -21,11 +21,11 @@ from docpact.checker.rn_registry import cargar_registro
 
 
 def _try_load_embedder() -> Any | None:
-    """Intenta cargar TextEmbedding de FastEmbed con paraphrase-multilingual-mpnet-base-v2.
+    """Intenta cargar TextEmbedding de FastEmbed con jina-embeddings-v2-base-es.
 
-    Modelo: sentence-transformers/paraphrase-multilingual-mpnet-base-v2 (768 dims, ONNX).
-    Más robusto que e5-large para docpact: mejor separabilidad entre
-    matches y no-matches (gap 0.207 vs 0.084).
+    Modelo: jinaai/jina-embeddings-v2-base-es (768 dims, ONNX).
+    Optimizado para español: mejor detección de reglas de negocio similares
+    con diferente redacción (e.g. 'Validar RUT' vs 'Verificar identidad con RUT').
     Si fastembed no está instalado, retorna None (fallback a keyword).
 
     Returns:
@@ -34,7 +34,7 @@ def _try_load_embedder() -> Any | None:
     try:
         from fastembed import TextEmbedding
 
-        return TextEmbedding(model_name="sentence-transformers/paraphrase-multilingual-mpnet-base-v2")
+        return TextEmbedding(model_name="jinaai/jina-embeddings-v2-base-es")
     except ImportError:
         return None
 
