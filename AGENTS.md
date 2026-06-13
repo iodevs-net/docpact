@@ -63,7 +63,7 @@ Pipeline architecture with clear layer separation:
 | `src/docpact/runtime/` | Pytest plugin, sentinels, `ContractViolationError` |
 | `src/docpact/cli/` | CLI entry point (`main.py`) + `commands/` package (7 modules) |
 | `src/docpact/schema/` | JSON Schema (`contrato-v1.json`) + validator |
-| `tests/` | 35 test files, flat structure, fixtures dirs |
+| `tests/` | 36 test files, flat structure, fixtures dirs |
 | `tests/fixtures_ts/` | TypeScript/TSX CONTRATO example files (17 files) |
 | `docs/` | Protocol spec, side effects patterns, marker honesty docs |
 | `docs/investigacion/` | 9 LLM research reports on AI-native code |
@@ -188,7 +188,7 @@ docpact mcp-doctor                  # MCP server diagnostics
 - **No conftest.py** — all fixtures defined inline per test file
 - **Primary fixture**: `tmp_path` (used in 20+ files for temp project structures)
 - **Mocking**: `unittest.mock.patch` for HTTP, `monkeypatch` for env vars/module patching
-- **35 test files**, ~300KB total, flat structure (no subdirectories for test files)
+- **36 test files**, ~300KB total, flat structure (no subdirectories for test files)
 - **Test classes**: Used for logical grouping only (no `__init__`, no setup/teardown)
 - **Helper functions**: Module-level `_mock_*`, `_make_*`, `_write_*` prefixes
 - **Coverage**: Configured but no threshold enforced (`--cov-fail-under` absent)
