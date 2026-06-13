@@ -1246,14 +1246,10 @@ def _calcular_similitud(a: str, b: str) -> float:
 
 
 def tool_verificar_conflicto(rn_descripcion: str) -> dict[str, Any]:
-    """Tool 10: Verifica si una nueva RN entrará en conflicto con existentes.
+    """Tool 10: Verifica si una nueva RN entra en conflicto y sugiere resolución.
 
-    Analiza:
-    - Conflictos directos: misma entidad, regla opuesta
-    - Overrides: misma función/concepto, comportamiento diferente
-    - Duplicados: descripción muy similar a una existente
-
-    Retorna lista de RNs potencialmente conflictivas con explicación.
+    Detecta: duplicados, mismos conceptos, overrides.
+    Para cada conflicto sugiere una resolución concreta.
     """
     if _index is None:
         return {"error": "Índice no cargado"}
@@ -1262,58 +1258,79 @@ def tool_verificar_conflicto(rn_descripcion: str) -> dict[str, Any]:
     desc_lower = rn_descripcion.lower()
 
     for rn_id, rn in _index["rns"].items():
-        existente_desc = rn["descripcion"].lower()
-
-        # 1. Duplicado casi exacto (similitud > 0.7)
         similitud = _calcular_similitud(rn_descripcion, rn["descripcion"])
+
+        # 1. Duplicado casi exacto
         if similitud > 0.7:
             conflictos.append({
                 "tipo": "duplicado",
                 "rn_id": rn_id,
                 "descripcion": rn["descripcion"],
                 "similitud": round(similitud, 2),
-                "explicacion": f"La RN propuesta es muy similar a {rn_id}. Podría ser un duplicado.",
-                "accion": f"Revisá si es la misma regla. Si lo es, usá {rn_id} en lugar de crear una nueva.",
+                "explicacion": f"La RN propuesta es muy similar a {rn_id}.",
+                "resolucion": {
+                    "opcion_a": f"Usar {rn_id} existente si es la misma regla",
+                    "opcion_b": f"Crear nueva RN solo si la regla es diferente",
+                    "recomendacion": "opcion_a" if similitud > 0.85 else "evaluar",
+                },
+                "prioridad": "alta",
             })
             continue
 
-        # 2. Misma entidad/concepto (keywords compartidos significativos)
-        similitud_concepto = _calcular_similitud(rn_descripcion, rn["descripcion"])
-        if similitud_concepto > 0.4:
+        # 2. Mismo concepto
+        if similitud > 0.4:
             conflictos.append({
                 "tipo": "mismo_concepto",
                 "rn_id": rn_id,
                 "descripcion": rn["descripcion"],
-                "similitud": round(similitud_concepto, 2),
-                "explicacion": f"La RN propuesta trata un tema similar a {rn_id}. Verificá que no choquen.",
-                "accion": "Compará las dos reglas. Si definen comportamientos diferentes para el mismo caso, una sobreescribe a la otra.",
+                "similitud": round(similitud, 2),
+                "explicacion": f"La RN propuesta trata un tema similar a {rn_id}.",
+                "resolucion": {
+                    "opcion_a": f"Agregar la nueva condición a {rn_id} como caso borde",
+                    "opcion_b": f"Crear RN separada si son reglas independientes",
+                    "recomendacion": "opcion_a" if similitud > 0.6 else "evaluar",
+                },
+                "prioridad": "media",
             })
 
-        # 3. Override potencial: misma función afectada
+        # 3. Override potencial
         if rn.get("funciones"):
             for func in rn["funciones"]:
                 func_name = func.get("funcion", "").lower()
-                # Si la descripción nueva menciona la misma función
                 if func_name and func_name in desc_lower:
                     conflictos.append({
                         "tipo": "override",
                         "rn_id": rn_id,
                         "descripcion": rn["descripcion"],
                         "funcion_afectada": func["funcion"],
-                        "explicacion": f"La RN propuesta afecta la función '{func['funcion']}', que ya está regulada por {rn_id}.",
-                        "accion": f"Definí si la nueva regla reemplaza o complementa a {rn_id}. Si reemplaza, actualizá {rn_id} en lugar de crear una nueva.",
+                        "explicacion": f"La RN propuesta afecta '{func['funcion']}', regulada por {rn_id}.",
+                        "resolucion": {
+                            "opcion_a": f"Actualizar {rn_id} para incluir la nueva condición",
+                            "opcion_b": f"Crear RN con mayor prioridad que {rn_id}",
+                            "opcion_c": f"Hacer que {rn_id} sea condicional (si X entonces Y)",
+                            "recomendacion": "opcion_a",
+                        },
+                        "prioridad": "alta",
                     })
+
+    # Generar resumen con recomendación
+    if conflictos:
+        alta = sum(1 for c in conflictos if c["prioridad"] == "alta")
+        media = sum(1 for c in conflictos if c["prioridad"] == "media")
+
+        if alta > 0:
+            consejo = f"Hay {alta} conflictos urgentes. Revisá antes de crear la RN."
+        else:
+            consejo = f"Hay {media} posibles conflictos menores. Evaluá si aplican."
+    else:
+        consejo = "No detecté conflictos. Podés proceder a crear la RN."
 
     return {
         "tiene_conflictos": len(conflictos) > 0,
         "conflictos": conflictos,
         "total_conflictos": len(conflictos),
         "descripcion_evaluada": rn_descripcion,
-        "consejo": (
-            "Encontré posibles conflictos. Revisá cada uno antes de crear la RN."
-            if conflictos
-            else "No detecté conflictos. Podés proceder a crear la RN."
-        ),
+        "consejo": consejo,
     }
 
 
@@ -1732,16 +1749,17 @@ def tool_explicar_errores(project_root: str | None = None) -> dict[str, Any]:
         return {"error": f"Error explicando errores: {e}"}
 
 def tool_descubrir_reglas(project_root: str | None = None) -> dict[str, Any]:
-    """Tool 20: Descubre reglas de negocio potenciales en el código.
+    """Tool 20: Descubre reglas de negocio no declaradas en el código.
 
-    Analiza el código buscando patrones que sugieren reglas no declaradas.
+    Analiza el código buscando patrones que sugieren reglas no formalizadas.
+    Cruza con el índice de CONTRATOs para saber cuáles ya están declaradas.
     """
     import os
     root = project_root or os.environ.get("DOCPACT_PROJECT_ROOT", ".")
 
     try:
         from docpact.checker.rule_discovery import escanear_proyecto
-        return escanear_proyecto(Path(root))
+        return escanear_proyecto(Path(root), index=_index)
     except Exception as e:
         return {"error": f"Error descubriendo reglas: {e}"}
 
