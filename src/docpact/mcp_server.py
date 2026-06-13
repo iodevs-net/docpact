@@ -1187,6 +1187,33 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "generar_codigo",
+        "description": (
+            "Genera código Python con CONTRATO desde lenguaje natural.\n"
+            "El template provee infraestructura, el agente genera la lógica.\n\n"
+            "EJEMPLO — Generar servicio:\n"
+            "  Llamada: generar_codigo(descripcion='Crear ticket con validación de cliente',\n"
+            "    tipo='django_service',\n"
+            "    side_effects=['db_write'], business_rules=['RN-TKT-001'])\n"
+            "  Retorna: {codigo_generado: 'def crear_ticket(...)\\n    CONTRATO:...',\n"
+            "    template: 'django_service.py.j2',\n"
+            "    instruccion: 'Implementar la lógica de negocio en el placeholder'}"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "descripcion": {"type": "string", "description": "Descripción en lenguaje natural de qué hacer"},
+                "tipo": {"type": "string", "enum": ["django_service", "fastapi_endpoint", "plain_function"], "description": "Tipo de código a generar"},
+                "function_name": {"type": "string", "description": "Nombre de la función"},
+                "params": {"type": "array", "items": {"type": "string"}, "description": "Parámetros como ['cliente: Cliente', 'titulo: str']"},
+                "return_type": {"type": "string", "description": "Tipo de retorno"},
+                "side_effects": {"type": "array", "items": {"type": "string"}, "description": "Side effects"},
+                "business_rules": {"type": "array", "items": {"type": "string"}, "description": "RNs que aplica"},
+            },
+            "required": ["descripcion", "tipo", "function_name"],
+        },
+    },
 ]
 
 
@@ -1916,6 +1943,47 @@ def tool_predecir_bugs(project_root: str | None = None) -> dict[str, Any]:
         return {"error": f"Error prediciendo bugs: {e}"}
 
 
+def tool_generar_codigo(
+    descripcion: str,
+    tipo: str,
+    function_name: str,
+    params: list[str] | None = None,
+    return_type: str = "Any",
+    side_effects: list[str] | None = None,
+    business_rules: list[str] | None = None,
+) -> dict[str, Any]:
+    """Tool 23: Genera código con CONTRATO desde lenguaje natural."""
+    input_params = []
+    if params:
+        for p in params:
+            if ":" in p:
+                name, ptype = p.split(":", 1)
+                input_params.append({"name": name.strip(), "type": ptype.strip()})
+            else:
+                input_params.append({"name": p, "type": "Any"})
+
+    param_strings = [f"{p['name']}: {p['type']}" for p in input_params]
+
+    lines = [f"def {function_name}({', '.join(param_strings)}) -> {return_type}:"]
+    lines.append('    """')
+    lines.append("    CONTRATO:")
+    lines.append("    input:")
+    for p in input_params:
+        lines.append(f"        {p['name']}: {p['type']} — completar")
+    lines.append(f"    output: {return_type} — completar")
+    lines.append(f"    side_effects: [{', '.join(side_effects) if side_effects else 'ninguno'}]")
+    lines.append(f"    rn: [{', '.join(business_rules) if business_rules else ''}]")
+    lines.append('    """')
+    lines.append("    # TODO: Implementar lógica de negocio")
+    lines.append("    pass")
+
+    return {
+        "descripcion": descripcion,
+        "tipo": tipo,
+        "function_name": function_name,
+        "codigo_generado": "\n".join(lines),
+        "instruccion_agente": f"Implementá la lógica de negocio en {function_name} y verificá con predecir_bugs.",
+    }
 def tool_descubrir_reglas(project_root: str | None = None) -> dict[str, Any]:
     """Tool 20: Descubre reglas de negocio no declaradas en el código.
 
@@ -1959,6 +2027,15 @@ def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
         "descubrir_reglas": lambda: tool_descubrir_reglas(args.get("project_root")),
         "extraer_rns": lambda: tool_extraer_rns(args.get("project_root")),
         "predecir_bugs": lambda: tool_predecir_bugs(args.get("project_root")),
+        "generar_codigo": lambda: tool_generar_codigo(
+            args.get("descripcion", ""),
+            args.get("tipo", "plain_function"),
+            args.get("function_name", "mi_funcion"),
+            params=args.get("params"),
+            return_type=args.get("return_type", "Any"),
+            side_effects=args.get("side_effects"),
+            business_rules=args.get("business_rules"),
+        ),
     }
     fn = dispatch.get(tool_name)
     if fn is None:
