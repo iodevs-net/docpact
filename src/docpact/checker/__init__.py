@@ -1,5 +1,6 @@
 """Checker - Verificación de CONTRATOS contra implementación."""
 
+from .models import Hallazgo, ResultadoFuncion, ResultadoArchivo, ResultadoProyecto
 from .side_effects import check_side_effects
 from .rn_checker import check_rn
 from .deps_checker import check_deps
@@ -7,6 +8,10 @@ from .orchestrator import check_file, check_proyecto
 from .import_checker import check_inline_imports
 
 __all__ = [
+    "Hallazgo",
+    "ResultadoFuncion",
+    "ResultadoArchivo",
+    "ResultadoProyecto",
     "check_side_effects",
     "check_rn",
     "check_deps",

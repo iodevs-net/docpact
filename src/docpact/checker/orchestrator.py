@@ -9,17 +9,20 @@ Flujo por archivo:
    d. Verificar dependencias (archivos/símbolos existentes)
 3. Acumular resultados y calcular score
 """
-
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
-
+from docpact.checker.models import (
+    Hallazgo,
+    ResultadoArchivo,
+    ResultadoFuncion,
+    ResultadoProyecto,
+    _suprimir_hallazgos,
+)
 from docpact.checker.side_effects import check_side_effects
 from docpact.checker.rn_checker import (
-    check_rn,
     extraer_comentarios_desde_fuente,
     _extraer_ids_rn,
 )
@@ -29,6 +32,12 @@ from docpact.checker.marker_honesty import (
 )
 from docpact.checker.deps_checker import check_deps
 from docpact.checker.import_checker import check_inline_imports
+from docpact.checker.ts_checker import check_file_ts
+from docpact.checker.signature_checker import (
+    check_signature,
+    introspectar_firma,
+    find_project_root,
+)
 
 try:
     from docpact.checker.rn_registry_checker import check_rn_against_registry  # type: ignore[import-untyped]
@@ -39,308 +48,12 @@ from docpact.config import DocpactConfig
 from docpact.models.contrato import (
     Contrato,
     ErrorParser,
-    ReglaNegocio,
-    Dependencia,
-    SideEffect,
-    CampoInput,
 )
 from docpact.parser.extractor import extraer_docstrings
 from docpact.parser.lexer import tokenizar
 from docpact.parser.parser import parsear
-from docpact.parser.ts_parser import extraer_contratos_ts
-from docpact.checker.ts_sidefx import check_side_effects_ts
 from docpact.checker.contract_index import ContractIndex, ImportResolver
 from docpact.checker.transitive_effects import check_transitive_effects
-
-
-@dataclass
-class Hallazgo:
-    """Un hallazgo individual de la verificación."""
-
-    tipo: str  # "error" o "warning"
-    campo: str
-    funcion: str
-    archivo: str
-    linea: int
-    mensaje: str
-    sugerencia: str = ""
-
-    def a_error_parser(self) -> ErrorParser:
-        """a_error_parser — Descripción.
-
-            CONTRATO:
-            input:
-            output: ErrorParser — Descripción del retorno
-            side_effects: ninguno
-            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
-        """
-        return ErrorParser(
-            campo=self.campo,
-            mensaje=self.mensaje,
-            linea=self.linea,
-            sugerencia=self.sugerencia,
-        )
-
-
-def _suprimir_hallazgos(
-    hallazgos: list[Hallazgo], config: DocpactConfig
-) -> list[Hallazgo]:
-    """Filtra hallazgos cuyo mensaje coincida con patrones de supresión."""
-    if not config.warnings_suppress:
-        return hallazgos
-    return [h for h in hallazgos if not config.debe_suprimir(h.mensaje)]
-
-
-@dataclass
-class ResultadoFuncion:
-    """Resultado de la verificación de una función."""
-
-    nombre: str
-    archivo: str
-    linea: int
-    tiene_contrato: bool
-    contrato: Optional[Contrato] = None
-    hallazgos: list[Hallazgo] = field(default_factory=list)
-    codigo_funcion: str = ""
-
-    @property
-    def errores(self) -> list[Hallazgo]:
-        """errores — Descripción.
-
-            CONTRATO:
-            input:
-            output: list[Hallazgo] — Descripción del retorno
-            side_effects: ninguno
-            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
-        """
-        return [h for h in self.hallazgos if h.tipo == "error"]
-
-    @property
-    def warnings(self) -> list[Hallazgo]:
-        """warnings — Descripción.
-
-            CONTRATO:
-            input:
-            output: list[Hallazgo] — Descripción del retorno
-            side_effects: ninguno
-            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
-        """
-        return [h for h in self.hallazgos if h.tipo == "warning"]
-
-    @property
-    def valido(self) -> bool:
-        """valido — Descripción.
-
-            CONTRATO:
-            input:
-            output: bool — Descripción del retorno
-            side_effects: ninguno
-            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
-        """
-        return len(self.errores) == 0
-
-
-@dataclass
-class ResultadoArchivo:
-    """Resultado de la verificación de un archivo completo."""
-
-    archivo: str
-    funciones: list[ResultadoFuncion] = field(default_factory=list)
-
-    @property
-    def total_funciones(self) -> int:
-        """total_funciones — Descripción.
-
-            CONTRATO:
-            input:
-            output: int — Descripción del retorno
-            side_effects: ninguno
-            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
-        """
-        return len(self.funciones)
-
-    @property
-    def funciones_con_contrato(self) -> int:
-        """funciones_con_contrato — Descripción.
-
-            CONTRATO:
-            input:
-            output: int — Descripción del retorno
-            side_effects: ninguno
-            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
-        """
-        return sum(1 for f in self.funciones if f.tiene_contrato)
-
-    @property
-    def total_errores(self) -> int:
-        """total_errores — Descripción.
-
-            CONTRATO:
-            input:
-            output: int — Descripción del retorno
-            side_effects: ninguno
-            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
-        """
-        return sum(len(f.errores) for f in self.funciones)
-
-    @property
-    def total_warnings(self) -> int:
-        """total_warnings — Descripción.
-
-            CONTRATO:
-            input:
-            output: int — Descripción del retorno
-            side_effects: ninguno
-            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
-        """
-        return sum(len(f.warnings) for f in self.funciones)
-
-
-@dataclass
-class ResultadoProyecto:
-    """Resultado de la verificación de todo el proyecto."""
-
-    archivos: list[ResultadoArchivo] = field(default_factory=list)
-    config: DocpactConfig = field(default_factory=DocpactConfig)
-    # Cross-ref vs REGISTRO.md (poblados por check_proyecto si el archivo existe)
-    rns_fake: list = field(default_factory=list)        # list[RNFakeHallazgo]
-    rns_huerfanas: list = field(default_factory=list)   # list[RNHuerfanaHallazgo]
-    rns_placeholders: list[str] = field(default_factory=list)  # RN-XXX, etc.
-
-    @property
-    def total_funciones(self) -> int:
-        return sum(a.total_funciones for a in self.archivos)
-
-    @property
-    def funciones_con_contrato(self) -> int:
-        return sum(a.funciones_con_contrato for a in self.archivos)
-
-    @property
-    def total_errores(self) -> int:
-        return sum(a.total_errores for a in self.archivos)
-
-    @property
-    def total_warnings(self) -> int:
-        return sum(a.total_warnings for a in self.archivos)
-
-    @property
-    def total_archivos(self) -> int:
-        """total_archivos — Descripción.
-
-            CONTRATO:
-            input:
-            output: int — Descripción del retorno
-            side_effects: ninguno
-            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
-        """
-        return len(self.archivos)
-
-    def _ponderar_hallazgos(self) -> tuple[int, int]:
-        """Agrupa hallazgos por campo y aplica pesos diferenciales.
-
-        Returns:
-            (total_ponderado_errores, total_ponderado_warnings)
-        """
-        PESOS_ERROR = {
-            "rn_tests": 20,
-            "side_effects": 15,
-            "presencia": 12,
-            "rn": 10,
-            "dependencias": 5,
-        }
-        PESOS_WARNING = {
-            "side_effects": 5,
-            "rn": 3,
-            "dependencias": 2,
-        }
-        ERROR_DEFAULT = 10
-        WARNING_DEFAULT = 3
-
-        err_ponderado = 0
-        warn_ponderado = 0
-        for archivo in self.archivos:
-            for func in archivo.funciones:
-                for h in func.hallazgos:
-                    if h.tipo == "error":
-                        err_ponderado += PESOS_ERROR.get(h.campo, ERROR_DEFAULT)
-                    elif h.tipo == "warning":
-                        warn_ponderado += PESOS_WARNING.get(h.campo, WARNING_DEFAULT)
-        return err_ponderado, warn_ponderado
-
-    def calcular_score(self) -> int:
-        """Calcula el score AI-Native (0-100).
-
-        DEPRECADO 2026-06-02: este score es "vanity metric" — no predice
-        bugs evitados ni calidad real. Usar `metricas_honestas()` en su lugar.
-        Se mantiene por compatibilidad con integraciones existentes.
-        """
-        if self.total_funciones == 0:
-            return 0
-
-        score = 100
-
-        # Penalización por funciones sin CONTRATO
-        sin_contrato = self.total_funciones - self.funciones_con_contrato
-        if sin_contrato > 0:
-            penalty_sin = min(30, int((sin_contrato / self.total_funciones) * 50))
-            score -= penalty_sin
-
-        # Penalización ponderada por errores de verificación
-        err_pond, warn_pond = self._ponderar_hallazgos()
-        if err_pond > 0:
-            penalty_errores = min(40, err_pond)
-            score -= penalty_errores
-
-        # Penalización ponderada por warnings
-        if warn_pond > 0:
-            penalty_warnings = min(15, warn_pond)
-            score -= penalty_warnings
-
-        return max(0, score)
-
-    def metricas_honestas(self) -> dict:
-        """Métricas que SÍ predicen calidad del proyecto (vs REGISTRO).
-
-        Returns:
-            dict con:
-              - rns_fake: count de RNs declaradas en CONTRATO pero no en REGISTRO
-                (indica MENTIRA del agente)
-              - rns_huerfanas: count de RNs en REGISTRO sin CONTRATO
-                (indica OLVIDO: regla documentada pero no implementada/declarada)
-              - rns_placeholders: count de placeholders (RN-XXX) excluidos
-              - funciones_sin_contrato: count de funciones publicas sin CONTRATO
-              - funciones_totales: count total de funciones analizadas
-              - score_legacy: el score viejo (deprecado), solo para referencia
-        """
-        return {
-            "rns_fake": len(self.rns_fake),
-            "rns_huerfanas": len(self.rns_huerfanas),
-            "rns_placeholders": len(self.rns_placeholders),
-            "funciones_sin_contrato": self.total_funciones - self.funciones_con_contrato,
-            "funciones_totales": self.total_funciones,
-            "score_legacy": self.calcular_score(),  # deprecado
-        }
-
-    @property
-    def nivel(self) -> str:
-        """nivel — Descripción.
-
-            CONTRATO:
-            input:
-            output: str — Descripción del retorno
-            side_effects: ninguno
-            rn: []  # completar con RN-XXX de docs/reglas-del-negocio/
-        """
-        score = self.calcular_score()
-        if score >= 90:
-            return "L4 — AI-Optimized"
-        elif score >= 75:
-            return "L3 — AI-Native"
-        elif score >= 50:
-            return "L2 — AI-Friendly"
-        elif score >= 25:
-            return "L1 — AI-Aware"
-        return "L0 — Human-Native"
 
 
 def check_file(
@@ -359,7 +72,7 @@ def check_file(
         ResultadoArchivo con todas las funciones y sus hallazgos.
     """
     path = Path(archivo)
-    proyecto_root = _find_project_root(str(path))
+    proyecto_root = find_project_root(str(path))
     if proyecto_root is not None:
         try:
             rel_path = path.resolve().relative_to(proyecto_root.resolve())
@@ -373,7 +86,7 @@ def check_file(
             return ResultadoArchivo(archivo=str(path))
 
     if path.suffix in (".ts", ".tsx", ".jsx"):
-        return _check_file_ts(path, config)
+        return check_file_ts(path, config)
 
     # ── Python ──
     try:
@@ -429,215 +142,6 @@ def check_file(
 
     return resultado
 
-
-def _check_file_ts(path: Path, config: DocpactConfig) -> ResultadoArchivo:
-    """Verifica un archivo TypeScript/JSX extrayendo CONTRATOS con regex."""
-    resultado = ResultadoArchivo(archivo=str(path))
-
-    try:
-        contratos = extraer_contratos_ts(str(path))
-        fuente = path.read_text(encoding="utf-8")
-    except (FileNotFoundError, UnicodeDecodeError):
-        return resultado
-
-    lineas_fn = fuente.splitlines()
-
-    for c in contratos:
-        nombre = c.get("nombre_funcion", "")
-        if not nombre or nombre.startswith("_"):
-            continue
-
-        tiene_contrato = bool(
-            c.get("input") or c.get("output") or c.get("side_effects")
-        )
-
-        if not tiene_contrato and config.strict:
-            resultado.funciones.append(
-                ResultadoFuncion(
-                    nombre=nombre,
-                    archivo=str(path),
-                    linea=c.get("linea", 0),
-                    tiene_contrato=False,
-                    hallazgos=[
-                        Hallazgo(
-                            tipo="error",
-                            campo="presencia",
-                            funcion=nombre,
-                            archivo=str(path),
-                            linea=c.get("linea", 0),
-                            mensaje=f"Función pública '{nombre}' sin CONTRATO",
-                            sugerencia="Agrega un bloque CONTRATO al comentario de la función",
-                        )
-                    ],
-                )
-            )
-        elif tiene_contrato:
-            hallazgos_ts: list[Hallazgo] = []
-            linea_contrato = c.get("linea", 1)
-
-            # ── 1. Side effects ──
-            try:
-                inicio = linea_contrato - 1
-                codigo_fn = "\n".join(lineas_fn[inicio:])
-                se_declarados = c.get("side_effects", [])
-                if isinstance(se_declarados, str):
-                    se_declarados = [se_declarados]
-                err_sidefx = check_side_effects_ts(codigo_fn, se_declarados)
-            except Exception:
-                err_sidefx = []
-            for msg in err_sidefx:
-                # Coincidencia de side_effects en TS es heurística:
-                # Inertia router, window.open, fetch pueden no detectarse
-                # por contexto. Usar warning (no error) para evitar falsos
-                # positivos que bloqueen commits.
-                hallazgos_ts.append(
-                    Hallazgo(
-                        tipo="warning",
-                        campo="side_effects",
-                        funcion=nombre,
-                        archivo=str(path),
-                        linea=linea_contrato,
-                        mensaje=msg,
-                    )
-                )
-
-            # ── 2. Dependencias ──
-            deps = c.get("dependencias", [])
-            if isinstance(deps, list):
-                for dep in deps:
-                    dep = dep.strip()
-                    if not dep:
-                        continue
-                    # Separar modulo y simbolo
-                    if "::" in dep:
-                        modulo_path, _simbolo = dep.split("::", 1)
-                    else:
-                        modulo_path = dep
-
-                    # ── npm packages / Vite aliases ──
-                    # Paths que empiezan con @org/ son npm packages (node_modules)
-                    # ej: @inertiajs/react, @vitejs/plugin
-                    if modulo_path.startswith("@") and "/" in modulo_path:
-                        continue
-
-                    # Vite alias @/ (mapea a resources/js/ en ioDesk-3)
-                    if modulo_path.startswith("@/"):
-                        base_dir = path.parent
-                        vite_base = base_dir
-                        # Subir hasta encontrar resources/js/
-                        for p in [base_dir] + list(base_dir.parents):
-                            if (p / "resources" / "js").is_dir():
-                                vite_base = p / "resources" / "js"
-                                break
-                        ruta_rel = vite_base / modulo_path[2:]
-                        existe = False
-                        for ext in (".ts", ".tsx", ".jsx"):
-                            if ruta_rel.with_suffix(ext).exists():
-                                existe = True
-                                break
-                        if existe:
-                            continue
-                        # Si no se resuelve, silenciar (falso positivo de alias)
-                        continue
-
-                    # Resolver contra directorio del archivo actual
-                    base_dir = path.parent
-                    ruta_rel = base_dir / modulo_path
-                    existe = False
-                    for ext in (".py", ".ts", ".tsx", ".jsx"):
-                        if ruta_rel.with_suffix(ext).exists():
-                            existe = True
-                            break
-                    if not ruta_rel.exists() and not existe:
-                        hallazgos_ts.append(
-                            Hallazgo(
-                                tipo="warning",  # Downgraded to warning since it's often an alias
-                                campo="dependencias",
-                                funcion=nombre,
-                                archivo=str(path),
-                                linea=linea_contrato,
-                                mensaje=f"'{nombre}': dependencia '{dep}' — "
-                                f"archivo '{modulo_path}' no encontrado",
-                                sugerencia=f"Verifica la ruta (buscado desde {base_dir})",
-                            )
-                        )
-
-            # ── 3. RN check ──
-            rn_list = c.get("rn", [])
-            if isinstance(rn_list, list):
-                # Extraer comentarios // RN-XXX del codigo fuente
-                comentarios_ts: list[str] = []
-                # Buscar desde la linea del CONTRATO hasta fin del archivo
-                from_i = max(0, linea_contrato - 1)
-                for l in lineas_fn[from_i:]:
-                    stripped = l.strip()
-                    if "RN-" in stripped or "Gotcha" in stripped:
-                        comentarios_ts.append(stripped)
-                ids_en_codigo = set()
-                import re as _re
-
-                patron = _re.compile(r"RN-[\w-]+|Gotcha #\d+")
-                for cmt in comentarios_ts:
-                    for match in patron.finditer(cmt):
-                        ids_en_codigo.add(match.group())
-
-                for rn_entry in rn_list:
-                    rn_id = ""
-                    if isinstance(rn_entry, dict):
-                        rn_id = rn_entry.get("id", "")
-                    elif isinstance(rn_entry, str):
-                        rn_id = rn_entry
-                    if rn_id and rn_id not in ids_en_codigo:
-                        hallazgos_ts.append(
-                            Hallazgo(
-                                tipo="warning",
-                                campo="rn",
-                                funcion=nombre,
-                                archivo=str(path),
-                                linea=linea_contrato,
-                                mensaje=f"'{nombre}': RN '{rn_id}' declarada pero no encontrada "
-                                f"como comentario en el código",
-                                sugerencia=f"Agrega '// {rn_id}' en el lugar donde se implementa",
-                            )
-                        )
-
-            # RN test checker para TS: cada RN-XXX debe tener tests/rn/test_rn_XXX.py
-            if rn_list:
-                ts_rn_ids = []
-                for rn_entry in rn_list:
-                    if isinstance(rn_entry, dict):
-                        rid = rn_entry.get("id", "")
-                        if rid:
-                            ts_rn_ids.append(rid)
-                    elif isinstance(rn_entry, str):
-                        ts_rn_ids.append(rn_entry)
-                if ts_rn_ids:
-                    ts_root = _find_project_root(str(path))
-                    if ts_root is not None:
-                        rn_test_errors_ts = check_rn_tests(ts_rn_ids, ts_root, nombre)
-                        for e in rn_test_errors_ts:
-                            hallazgos_ts.append(
-                                Hallazgo(
-                                    tipo="error",
-                                    campo=e.campo,
-                                    funcion=nombre,
-                                    archivo=str(path),
-                                    linea=linea_contrato,
-                                    mensaje=e.mensaje,
-                                    sugerencia=e.sugerencia,
-                                )
-                            )
-            hallazgos_ts = _suprimir_hallazgos(hallazgos_ts, config)
-            resultado.funciones.append(
-                ResultadoFuncion(
-                    nombre=nombre,
-                    archivo=str(path),
-                    linea=linea_contrato,
-                    tiene_contrato=True,
-                    hallazgos=hallazgos_ts,
-                )
-            )
-    return resultado
 
 
 def _procesar_funcion(
@@ -698,7 +202,7 @@ def _procesar_funcion(
 
     # Introspectar firma si no se declararon inputs o output en el docstring (Zero-Friction)
     if "CONTRATO:" in doc and (not contrato.input or not contrato.output):
-        inputs_intro, output_intro = _introspectar_firma(node)
+        inputs_intro, output_intro = introspectar_firma(node)
         contrato = Contrato(
             input=contrato.input if contrato.input else inputs_intro,
             output=contrato.output if contrato.output else output_intro,
@@ -904,7 +408,7 @@ def _procesar_funcion(
         from docpact.checker.rn_patterns import verificar_rn_patrones
 
         # Resolver proyecto_root una sola vez para validadores que lo necesitan
-        proyecto_root = _find_project_root(archivo)
+        proyecto_root = find_project_root(archivo)
         contexto_base = {
             "archivo": archivo,
             "proyecto_root": str(proyecto_root) if proyecto_root else None,
@@ -982,11 +486,11 @@ def _procesar_funcion(
     from typing import Optional as _Optional
 
     # Verificar firma: input/output del CONTRATO vs firma real de Python
-    _check_signature(node, contrato, nombre, archivo, hallazgos,
+    check_signature(node, contrato, nombre, archivo, hallazgos,
                      tiene_future_annotations=tiene_future_annotations)
 
     if check_rn_against_registry is not None:
-        proyecto_root = _find_project_root(archivo)
+        proyecto_root = find_project_root(archivo)
         if proyecto_root is not None:
             rn_reg_errors, rn_reg_infos = check_rn_against_registry(
                 proyecto_root, contrato.rn
@@ -1019,7 +523,7 @@ def _procesar_funcion(
     # RN test checker: cada RN-XXX debe tener tests/rn/test_rn_XXX.py
     rn_ids = [r.id for r in contrato.rn]
     if rn_ids:
-        proyecto_root = _find_project_root(archivo)
+        proyecto_root = find_project_root(archivo)
         if proyecto_root is not None:
             rn_test_errors = check_rn_tests(rn_ids, proyecto_root, nombre)
             for e in rn_test_errors:
@@ -1227,7 +731,7 @@ def check_proyecto(
 
     # Construir índice global de contratos para el análisis transitivo
     index = ContractIndex()
-    proyecto_root = _find_project_root(ruta)
+    proyecto_root = find_project_root(ruta)
     try:
         # Buscamos todos los archivos .py del proyecto para el índice (incluso los no modificados)
         todos_py = archivos
@@ -1378,146 +882,3 @@ def _check_cross_reference_proyecto(
                 errores.extend(errs)
     return errores
 
-
-def _check_signature(
-    node: ast.FunctionDef | ast.AsyncFunctionDef,
-    contrato: Contrato,
-    nombre: str,
-    archivo: str,
-    hallazgos: list[Hallazgo],
-    tiene_future_annotations: bool = False,
-) -> None:
-    """Verifica que los parámetros del CONTRATO coincidan con la firma real.
-
-    No verifica tipos (delegado a mypy/pyright), solo nombres de parámetros.
-    Omite self/cls automáticamente.
-    Detecta parámetros virtuales (extraídos de kwargs.pop/get en el cuerpo).
-    """
-    if not contrato.input:
-        return
-
-    # Extraer parámetros reales del nodo AST
-    params_reales = set()
-    for arg in node.args.args:
-        if arg.arg not in ("self", "cls"):
-            params_reales.add(arg.arg)
-    for arg in node.args.kwonlyargs:
-        if arg.arg not in ("self", "cls"):
-            params_reales.add(arg.arg)
-    kwarg_name = node.args.kwarg.arg if node.args.kwarg else None
-    vararg_name = node.args.vararg.arg if node.args.vararg else None
-    if vararg_name:
-        params_reales.add(vararg_name)
-    if kwarg_name:
-        params_reales.add(kwarg_name)
-
-    # Virtual params: nombres extraídos de kwargs.pop("x") / kwargs.get("x") en el cuerpo
-    if kwarg_name:
-        for subnode in ast.walk(node):
-            if isinstance(subnode, ast.Call):
-                func = subnode.func
-                if (isinstance(func, ast.Attribute)
-                        and func.attr in ("pop", "get")
-                        and isinstance(func.value, ast.Name)
-                        and func.value.id == kwarg_name
-                        and subnode.args
-                        and isinstance(subnode.args[0], ast.Constant)
-                        and isinstance(subnode.args[0].value, str)):
-                    params_reales.add(subnode.args[0].value)
-
-    params_contrato = set(contrato.input.keys())
-
-    # Normalizar nombres: CONTRATO puede tener *args/**kwargs vs args/kwargs
-    def _normalizar(n: str) -> str:
-        return n.lstrip("*")
-
-    params_contrato_norm = {_normalizar(p) for p in params_contrato}
-
-    # Parámetros en CONTRATO que no existen en la función
-    for p in params_contrato:
-        if _normalizar(p) not in params_reales:
-            hallazgos.append(
-                Hallazgo(
-                    tipo="warning",
-                    campo="presencia",
-                    funcion=nombre,
-                    archivo=archivo,
-                    linea=node.lineno,
-                    mensaje=f"'{nombre}': CONTRATO declara parámetro '{p}' "
-                    f"que no existe en la firma real",
-                    sugerencia=f"Elimina '{p}' del bloque input del CONTRATO "
-                    f"o agrega el parámetro a la función",
-                )
-            )
-
-    # Parámetros reales sin documentar en CONTRATO
-    for p in params_reales:
-        if p not in params_contrato_norm:
-            hallazgos.append(
-                Hallazgo(
-                    tipo="warning",
-                    campo="presencia",
-                    funcion=nombre,
-                    archivo=archivo,
-                    linea=node.lineno,
-                    mensaje=f"'{nombre}': parámetro '{p}' no documentado en "
-                    f"CONTRATO input",
-                    sugerencia=f"Agrega '{p}: <tipo> — <descripción>' al bloque "
-                    f"input del CONTRATO",
-                )
-            )
-
-
-def _introspectar_firma(
-    node: ast.FunctionDef | ast.AsyncFunctionDef,
-) -> tuple[dict[str, CampoInput], str | None]:
-    """Extrae argumentos y retorno usando el AST de la función."""
-    import ast
-    inputs: dict[str, CampoInput] = {}
-    output_type: str | None = None
-
-    # Mapear argumentos
-    todos_args = node.args.args + node.args.kwonlyargs
-    for arg in todos_args:
-        if arg.arg in ("self", "cls"):
-            continue
-        tipo = "Any"
-        if arg.annotation:
-            try:
-                tipo = ast.unparse(arg.annotation).strip()
-            except Exception:
-                tipo = "Any"
-        inputs[arg.arg] = CampoInput(nombre=arg.arg, tipo=tipo)
-
-    # *args y **kwargs
-    if node.args.vararg and node.args.vararg.arg not in ("self", "cls"):
-        inputs[node.args.vararg.arg] = CampoInput(
-            nombre=node.args.vararg.arg, tipo="tuple"
-        )
-    if node.args.kwarg and node.args.kwarg.arg not in ("self", "cls"):
-        inputs[node.args.kwarg.arg] = CampoInput(
-            nombre=node.args.kwarg.arg, tipo="dict"
-        )
-
-    # Mapear retorno
-    if node.returns:
-        try:
-            output_type = ast.unparse(node.returns).strip()
-        except Exception:
-            output_type = "Any"
-
-    return inputs, output_type
-
-
-def _find_project_root(archivo: str) -> Optional[Path]:
-    """Busca la raiz del proyecto ascendiendo desde un archivo."""
-    from pathlib import Path as _Path
-
-    path = _Path(archivo).resolve()
-    for parent in [path] + list(path.parents):
-        reg = parent / "docs" / "reglas-del-negocio" / "REGISTRO.md"
-        if reg.exists():
-            return parent
-        if (parent / "pyproject.toml").exists() or (parent / "docpact.toml").exists():
-            return parent
-    return None
