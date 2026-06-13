@@ -290,6 +290,7 @@ def check_fastembed() -> DoctorCheck:
 
 def ejecutar(proyecto_root: Path | str, min_score: int = 90) -> DoctorResult:
     """Ejecuta todas las verificaciones del doctor."""
+    root = Path(proyecto_root) if isinstance(proyecto_root, str) else proyecto_root
     checks = [
         check_ci_integridad(root),
         check_precommit(root),

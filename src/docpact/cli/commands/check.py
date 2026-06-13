@@ -501,8 +501,9 @@ def cmd_verify_rns(args: argparse.Namespace) -> int:
 def _print_rn_results(results: list) -> None:
     """Imprime resultados de verify-rn en formato legible."""
     for r in results:
-        icono = "✅" if r["status"] == "PASS" else "❌" if r["status"] == "FAIL" else "ℹ️"
-        print(f"{icono} {r['rn_id']}: {r['mensaje']}")
+        icono = "✅" if r["status"] == "PASS" else "❌" if r["status"] == "FAIL" else "⚠️"
+        desc = r.get("description", r.get("mensaje", ""))
+        print(f"{icono} {r['rn_id']}: {desc}")
 
 
 def register(subparsers: argparse._SubParsersAction) -> argparse.ArgumentParser:
