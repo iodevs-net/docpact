@@ -1,7 +1,7 @@
 """CLI de docpact — punto de entrada principal.
 
 Contiene solo el setup de argparse y el dispatch a comandos.
-Los handlers de comandos están en cli/commands.py.
+Los handlers de comandos están en cli/commands/ (package).
 """
 
 from __future__ import annotations
