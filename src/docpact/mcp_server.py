@@ -1163,20 +1163,41 @@ def tool_obtener_briefing() -> dict[str, Any]:
     }
 
 def tool_modificar_archivo(archivo: str, diff: str) -> dict[str, Any]:
-    """Tool 8: Valida un cambio contra los CONTRATOs antes de aplicarlo."""
+    """Tool 8: Valida un cambio y verifica en tiempo real.
+
+    Pipeline:
+    1. Valida contra CONTRATOs (guard)
+    2. Si hay violaciones, retorna error
+    3. Si está OK, sugiere verificar con explicar_errores
+    """
     import os
     project_root = os.environ.get("DOCPACT_PROJECT_ROOT", ".")
     from docpact.guard import validar_cambio
 
     resultado = validar_cambio(archivo, diff, project_root)
-    return {
+
+    respuesta = {
         "allowed": resultado.allowed,
         "message": resultado.message,
-        "violations": [
+        "violaciones": [
             {"funcion": v.funcion, "tipo": v.tipo, "mensaje": v.mensaje, "sugerencia": v.sugerencia}
             for v in resultado.violations
         ],
+        "total_violaciones": len(resultado.violations),
     }
+
+    if resultado.allowed:
+        respuesta["siguiente_paso"] = (
+            "El cambio está permitido. Después de aplicarlo, "
+            "usá explicar_errores para verificar que todo esté bien."
+        )
+    else:
+        respuesta["instruccion_agente"] = (
+            f"El cambio tiene {len(resultado.violations)} violación(es). "
+            "No apliques el cambio hasta resolverlas."
+        )
+
+    return respuesta
 def tool_listar_rns() -> dict[str, Any]:
     """Tool 9: Lista todas las RNs del proyecto con sus descripciones.
 
