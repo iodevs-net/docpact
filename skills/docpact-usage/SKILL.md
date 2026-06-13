@@ -28,14 +28,9 @@ Use this skill when:
 | Committing changes | `validar_cambio` | Pre-commit verification |
 
 
-## Execution Steps
-
-### Step 1: Understand the project (MANDATORY)
-```python
-briefing = obtener_briefing()
-# Read the briefing — it contains ALL active rules
-# Never skip this step
-```
+| Creating a new RN | `verificar_conflicto` | Prevent duplicates/overrides with resolution suggestions |
+| Creating a rule from NL | `crear_contrato` | Convert natural language to CONTRATO format |
+| Explaining to stakeholder | `explicar_errores` + `explicar_rn` | Human-readable output |
 
 ### Step 2: Find relevant code
 ```python
