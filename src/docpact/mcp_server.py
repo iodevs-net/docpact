@@ -1136,6 +1136,32 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "extraer_rns",
+        "description": (
+            "Analiza un proyecto y extrae reglas de negocio implícitas.\n"
+            "Útil para: migrar proyectos existentes, crear librería de RNs por industria,\n"
+            "extraer RNs de repos open-source.\n\n"
+            "EJEMPLO — Extraer de proyecto actual:\n"
+            "  Llamada: extraer_rns()\n"
+            "  Retorna: {archivos_escaneados: 50, rns_encontradas: 120,\n"
+            "    categorias: ['auth', 'ticket', 'notification'],\n"
+            "    rns_sugeridas: [{categoria: 'auth', cantidad_evidencias: 25,\n"
+            "      titulo_sugerido: 'RN-AUTH-001',\n"
+            "      descripcion_sugerida: 'Regla de auth detectada en 25 lugares'}]}\n\n"
+            "EJEMPLO — Extraer de repo externo:\n"
+            "  Llamada: extraer_rns(project_root='/path/to/external-repo')"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {
+                    "type": "string",
+                    "description": "Raíz del proyecto a analizar (default: directorio actual)",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -1834,6 +1860,22 @@ def tool_explicar_errores(project_root: str | None = None) -> dict[str, Any]:
     except Exception as e:
         return {"error": f"Error explicando errores: {e}"}
 
+def tool_extraer_rns(project_root: str | None = None) -> dict[str, Any]:
+    """Tool 21: Extrae reglas de negocio de un proyecto existente.
+
+    Analiza código y sugiere RNs basadas en patrones detectados.
+    Útil para migrar proyectos o crear librerías de RNs por industria.
+    """
+    import os
+    root = project_root or os.environ.get("DOCPACT_PROJECT_ROOT", ".")
+
+    try:
+        from docpact.checker.rn_extractor import extraer_rns_de_proyecto
+        return extraer_rns_de_proyecto(Path(root))
+    except Exception as e:
+        return {"error": f"Error extrayendo RNs: {e}"}
+
+
 def tool_descubrir_reglas(project_root: str | None = None) -> dict[str, Any]:
     """Tool 20: Descubre reglas de negocio no declaradas en el código.
 
@@ -1907,8 +1949,8 @@ def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
         ),
         "ejecutar_tests": lambda: tool_ejecutar_tests(args.get("project_root")),
         "generar_reporte": lambda: tool_generar_reporte(args.get("project_root")),
-        "explicar_errores": lambda: tool_explicar_errores(args.get("project_root")),
         "descubrir_reglas": lambda: tool_descubrir_reglas(args.get("project_root")),
+        "extraer_rns": lambda: tool_extraer_rns(args.get("project_root")),
     }
 
     fn = dispatch.get(tool_name)
