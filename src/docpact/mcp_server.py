@@ -685,8 +685,39 @@ TOOLS = [
             "required": ["referencia"],
         },
     },
+    {
+        "name": "obtener_briefing",
+        "description": "Obtiene el briefing de reglas de negocio del proyecto. Lee esto ANTES de empezar a codear para entender qué debes respetar: RNs activas, side effects, zonas de riesgo.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
 ]
 
+
+def tool_obtener_briefing() -> dict[str, Any]:
+    """Tool 7: Obtener el briefing de reglas de negocio del proyecto.
+
+    Retorna el briefing completo. El briefing se auto-actualiza
+    cuando el código cambia (fingerprint-based cache).
+    Usa esto para entender el contexto del proyecto ANTES de codear.
+    """
+    import os
+    project_root = os.environ.get("DOCPACT_PROJECT_ROOT", ".")
+    from docpact.briefing import generar_briefing, leer_briefing
+
+    briefing_path, fue_regenerado = generar_briefing(project_root)
+    contenido = leer_briefing(project_root)
+
+    if contenido is None:
+        return {"error": "No se pudo generar el briefing"}
+
+    return {
+        "briefing": contenido,
+        "path": str(briefing_path),
+        "updated": fue_regenerado,
+    }
 
 def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
     """Dispatch tool call to the right function."""
@@ -709,6 +740,7 @@ def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
         "navegar_referencias": lambda: tool_navegar_referencias(
             args.get("referencia", "")
         ),
+        "obtener_briefing": lambda: tool_obtener_briefing(),
     }
 
     fn = dispatch.get(tool_name)
