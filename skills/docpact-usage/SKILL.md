@@ -32,6 +32,7 @@ Use this skill when:
 | Creating a rule from NL | `crear_contrato` | Convert natural language to CONTRATO format |
 | Explaining to stakeholder | `explicar_errores` + `explicar_rn` | Human-readable output |
 | Modifying code | `modificar_archivo` | Real-time validation before applying |
+| Extracting RNs from code | `extraer_rns` | Extract business rules from existing codebases |
 | Committing changes | `validar_cambio` | Pre-commit verification |
 
 
