@@ -19,7 +19,7 @@ Pipeline architecture with clear layer separation:
 - `orchestrator.py` (884 lines) coordinates 21 specialized checkers per function:
   1. `side_effects.py` — AST walker classifies calls into categories vs declared effects
   2. `transitive_effects.py` — Follows call chains via `ContractIndex` for undeclared effects
-  3. `semantic_rn.py` (666 lines) — Dispatcher for 5 validators: `state_transition`, `no_import`, `required_groups`, `tenant_safe`, `has_pattern`
+  3. `semantic/` — 5 validators in separate modules: `state_transition`, `no_import`, `required_groups`, `tenant_safe`, `has_pattern`
   4. `marker_honesty.py` — Detects decorative # RN-XXX on delegation lines
   5. `rn_checker.py` — Basic # RN-XXX marker verification
   6. `rn_crossref.py` — RN propagation across call boundaries
@@ -48,7 +48,7 @@ Pipeline architecture with clear layer separation:
 - Modes: `strict` (raises) and `warning` (emits warnings)
 
 **Layer 5 — Interfaces**
-- CLI (`cli/main.py` 620 lines + `cli/commands.py` 1191 lines, 15+ commands)
+- CLI (`cli/main.py` 67 lines + `cli/commands/` 7 modules, 21 commands)
 - MCP server (`mcp_server.py`, JSON-RPC 2.0 over stdio, 12 tools)
 - Python API (`api.py`, thin wrappers)
 
@@ -159,7 +159,7 @@ docpact mcp-doctor                  # MCP server diagnostics
 | `src/docpact/parser/extractor.py` | Python AST docstring extractor |
 | `src/docpact/mcp_server.py` | MCP server (12 tools, JSON-RPC over stdio) |
 | `src/docpact/index.py` | Pre-calculated index generator for MCP |
-| `src/docpact/cli/main.py` | CLI entry point (620 lines) + `commands/` package (7 modules) |
+| `src/docpact/cli/main.py` | CLI entry point (67 lines) + `commands/` package (7 modules) |
 | `src/docpact/runtime/pytest_plugin.py` | Pytest plugin for runtime enforcement |
 | `src/docpact/runtime/sentinels.py` | DB/disk/email interceptors |
 | `src/docpact/schema/contrato-v1.json` | JSON Schema (draft-07) for CONTRATO validation |
