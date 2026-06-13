@@ -61,7 +61,7 @@ Pipeline architecture with clear layer separation:
 | `src/docpact/checker/` | 21 specialized verification modules |
 | `src/docpact/models/` | Frozen dataclasses: `Contrato`, `SideEffect`, `ReglaNegocio`, etc. |
 | `src/docpact/runtime/` | Pytest plugin, sentinels, `ContractViolationError` |
-| `src/docpact/cli/` | CLI entry point (`main.py`) + subcommands (`fix.py`, `init.py`) |
+| `src/docpact/cli/` | CLI entry point (`main.py`) + `commands/` package (7 modules) |
 | `src/docpact/schema/` | JSON Schema (`contrato-v1.json`) + validator |
 | `tests/` | 35 test files, flat structure, fixtures dirs |
 | `tests/fixtures_ts/` | TypeScript/TSX CONTRATO example files (17 files) |
@@ -159,7 +159,7 @@ docpact mcp-doctor                  # MCP server diagnostics
 | `src/docpact/parser/extractor.py` | Python AST docstring extractor |
 | `src/docpact/mcp_server.py` | MCP server (12 tools, JSON-RPC over stdio) |
 | `src/docpact/index.py` | Pre-calculated index generator for MCP |
-| `src/docpact/cli/main.py` | CLI entry point (620 lines) + `commands.py` (1191 lines) |
+| `src/docpact/cli/main.py` | CLI entry point (620 lines) + `commands/` package (7 modules) |
 | `src/docpact/runtime/pytest_plugin.py` | Pytest plugin for runtime enforcement |
 | `src/docpact/runtime/sentinels.py` | DB/disk/email interceptors |
 | `src/docpact/schema/contrato-v1.json` | JSON Schema (draft-07) for CONTRATO validation |
