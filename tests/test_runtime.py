@@ -92,14 +92,15 @@ def test_sentinela_db_simulado():
         sys.modules.pop('django.conf', None)
 
 
-def test_sentinelas_modo_warning():
+def test_sentinelas_modo_warning(tmp_path):
     import warnings
     
     # 1. Disco en modo warning
+    test_file = tmp_path / "test_warning_disco.txt"
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         with sentinela_disco(side_effects_permitidos=[], modo="warning"):
-            with open("/tmp/test_warning_disco.txt", "w") as f:
+            with open(test_file, "w") as f:
                 f.write("test warning")
         
         assert len(w) >= 1

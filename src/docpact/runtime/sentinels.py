@@ -75,7 +75,7 @@ def sentinela_disco(side_effects_permitidos: list[str], funcion: str = "desconoc
         if any(m in mode for m in ('w', 'a', 'x')):
             file_str = str(file)
             # Omitir archivos internos de cache o pruebas para no interrumpir el runner
-            if not (".pytest_cache" in file_str or "/tmp/pytest-" in file_str or file_str.endswith(".pyc") or "test_db.sqlite3" in file_str):
+            if not (".pytest_cache" in file_str or file_str.endswith(".pyc") or "test_db.sqlite3" in file_str):
                 detalle = f"Se intentó abrir el archivo '{file}' para escritura con modo '{mode}'."
                 if "escribe_archivo" not in efectos_canonicos:
                     if modo == "warning":
