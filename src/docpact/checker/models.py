@@ -23,6 +23,7 @@ class Hallazgo:
     linea: int
     mensaje: str
     sugerencia: str = ""
+    contexto: dict = field(default_factory=dict)  # Datos extra para explicación humana
 
     def a_error_parser(self) -> ErrorParser:
         """Convierte a ErrorParser para compatibilidad con el parser."""

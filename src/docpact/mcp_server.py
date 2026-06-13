@@ -1077,6 +1077,37 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "explicar_errores",
+        "description": (
+            "Traduce errores técnicos de docpact a lenguaje simple para el dueño de negocio.\n"
+            "Retorna: diagnóstico general, errores por urgencia, y para cada error:\n"
+            "- título: qué está mal (1 línea)\n"
+            "- qué_pasa: explicación simple\n"
+            "- por_qué_importa: por qué debería importarle\n"
+            "- cómo_arreglar: pasos concretos\n\n"
+            "EJEMPLO — Errores encontrados:\n"
+            "  Llamada: explicar_errores()\n"
+            "  Retorna: {diagnostico: 'Hay 3 problemas urgentes', total_errores: 3,\n"
+            "    por_urgencia: {alta: 3, media: 0, baja: 0},\n"
+            "    detalles: {alta: [{titulo: 'Efecto no declarado en crear_ticket',\n"
+            "      que_pasa: 'crear_ticket escribe en la BD pero dice que no tiene efectos',\n"
+            "      por_que_importa: 'No se puede verificar si se cumple la regla',\n"
+            "      como_arreglar: 'Agregá db_write al side_effects del docstring'}]}}\n\n"
+            "EJEMPLO — Sin errores:\n"
+            "  Llamada: explicar_errores()\n"
+            "  Retorna: {diagnostico: 'Todo está en buen estado', total_errores: 0}"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {
+                    "type": "string",
+                    "description": "Raíz del proyecto (default: directorio actual)",
+                },
+            },
+        },
+    },
 ]
 
 
@@ -1629,6 +1660,50 @@ def tool_generar_reporte(project_root: str | None = None) -> dict[str, Any]:
     except Exception as e:
         return {"error": f"Error generando reporte: {e}"}
 
+def tool_explicar_errores(project_root: str | None = None) -> dict[str, Any]:
+    """Tool 19: Traduce errores técnicos a lenguaje humano.
+
+    Ejecuta la verificación y retorna errores con contexto para explicación.
+    El agente LLM usa esta información para generar explicaciones personalizadas.
+    """
+    import os
+    root = project_root or os.environ.get("DOCPACT_PROJECT_ROOT", ".")
+
+    try:
+        from docpact.checker.orchestrator import check_proyecto
+        from docpact.checker.error_translator import generar_resumen_humano
+        from docpact.config import DocpactConfig
+
+        config = DocpactConfig()
+        resultado = check_proyecto(root, config)
+
+        # Recopilar hallazgos con contexto
+        hallazgos = []
+        for archivo_result in resultado.archivos:
+            for func in archivo_result.funciones:
+                for h in func.hallazgos:
+                    hallazgos.append({
+                        "tipo": h.tipo,
+                        "campo": h.campo,
+                        "funcion": h.funcion,
+                        "archivo": h.archivo,
+                        "linea": h.linea,
+                        "mensaje": h.mensaje,
+                        "sugerencia": h.sugerencia,
+                        "contexto": h.contexto,
+                    })
+
+        # Generar resumen humano
+        resumen = generar_resumen_humano(hallazgos)
+
+        return {
+            "ejecutado": True,
+            **resumen,
+        }
+    except Exception as e:
+        return {"error": f"Error explicando errores: {e}"}
+
+
 
 def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
     """Dispatch tool call to the right function."""
@@ -1685,6 +1760,7 @@ def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
         ),
         "ejecutar_tests": lambda: tool_ejecutar_tests(args.get("project_root")),
         "generar_reporte": lambda: tool_generar_reporte(args.get("project_root")),
+        "explicar_errores": lambda: tool_explicar_errores(args.get("project_root")),
     }
 
     fn = dispatch.get(tool_name)
