@@ -23,7 +23,7 @@ Use this skill when:
 | Before writing code | `buscar_por_intencion` | Find existing patterns |
 | After writing code | `explicar_errores` | Verify behavior, not just format |
 | Finding undeclared rules | `descubrir_reglas` | Discover patterns not yet formalized |
-| Creating a new RN | `verificar_conflicto` | Prevent duplicates/overrides |
+| Creating a new RN | `verificar_conflicto` | Prevent duplicates/overrides with resolution suggestions |
 | Explaining to stakeholder | `explicar_errores` + `explicar_rn` | Human-readable output |
 | Committing changes | `validar_cambio` | Pre-commit verification |
 
