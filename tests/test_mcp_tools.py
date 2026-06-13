@@ -307,3 +307,110 @@ class TestExplicarRn:
         resumen = result["resumen_para_dueno"]
         assert "regla" in resumen.lower()
         assert "RN-TKT-001" in resumen
+
+
+# ── Tests: _build_agent_context ──
+
+
+class TestBuildAgentContext:
+    """Tests para _build_agent_context."""
+
+    def test_con_indice_cargado(self, mock_index):
+        """Con índice cargado incluye stats del proyecto."""
+        import docpact.mcp_server as mcp
+        with patch.object(mcp, "_index", mock_index), \
+             patch.object(mcp, "_project_root", "/mi/proyecto"):
+            ctx = mcp._build_agent_context()
+
+        assert "10 total" in ctx
+        assert "5/10 functions have CONTRATOs" in ctx
+        assert "3 total" in ctx
+        assert "1/3 RNs have tests" in ctx
+        assert "/mi/proyecto" in ctx
+
+    def test_sin_indice(self):
+        """Sin índice cargado indica que no hay datos."""
+        import docpact.mcp_server as mcp
+        with patch.object(mcp, "_index", None):
+            ctx = mcp._build_agent_context()
+
+        assert "No project index loaded yet" in ctx
+
+    def test_incluye_categorias_tools(self):
+        """Incluye las 4 categorías de tools."""
+        import docpact.mcp_server as mcp
+        with patch.object(mcp, "_index", None):
+            ctx = mcp._build_agent_context()
+
+        assert "Discovery & Context" in ctx
+        assert "Validation & Enforcement" in ctx
+        assert "Contract Management" in ctx
+        assert "RN Management" in ctx
+        assert "Operations" in ctx
+
+    def test_incluye_workflow(self):
+        """Incluye el workflow recomendado."""
+        import docpact.mcp_server as mcp
+        with patch.object(mcp, "_index", None):
+            ctx = mcp._build_agent_context()
+
+        assert "Recommended Workflow" in ctx
+        assert "obtener_briefing" in ctx
+        assert "validar_cambio" in ctx
+        assert "ENFORCEMENT" in ctx
+
+    def test_incluye_link_agent_guide(self):
+        """Incluye referencia al AGENT_GUIDE.md."""
+        import docpact.mcp_server as mcp
+        with patch.object(mcp, "_index", None):
+            ctx = mcp._build_agent_context()
+
+        assert "DOCPACT_AGENT_GUIDE.md" in ctx
+
+    def test_incluye_todas_las_tools(self):
+        """Menciona las 18 tools por nombre."""
+        import docpact.mcp_server as mcp
+        with patch.object(mcp, "_index", None):
+            ctx = mcp._build_agent_context()
+
+        tool_names = [
+            "obtener_contexto_funcion", "buscar_por_intencion",
+            "obtener_rn", "buscar_rns_por_tema", "navegar_referencias",
+            "obtener_briefing", "listar_rns",
+            "validar_cambio", "modificar_archivo",
+            "crear_contrato", "corregir_contrato",
+            "verificar_conflicto", "crear_rn", "explicar_rn",
+            "ejecutar_verificacion", "ejecutar_tests",
+            "generar_reporte", "setup_docpact",
+        ]
+        for name in tool_names:
+            assert name in ctx, f"Tool '{name}' missing from agent context"
+
+    def test_incluye_semantic_search_status(self, mock_index):
+        """Indica estado de búsqueda semántica."""
+        import docpact.mcp_server as mcp
+        mock_index["stats"]["has_embeddings"] = True
+        with patch.object(mcp, "_index", mock_index), \
+             patch.object(mcp, "_project_root", "."):
+            ctx = mcp._build_agent_context()
+
+        assert "semantic search active" in ctx
+
+    def test_indice_sin_funciones(self):
+        """Edge case: índice con 0 funciones."""
+        import docpact.mcp_server as mcp
+        empty = {
+            "stats": {
+                "total_funciones": 0,
+                "funciones_con_rn": 0,
+                "total_rns": 0,
+                "rns_con_test": 0,
+                "has_embeddings": False,
+            }
+        }
+        with patch.object(mcp, "_index", empty), \
+             patch.object(mcp, "_project_root", "."):
+            ctx = mcp._build_agent_context()
+
+        assert "no functions indexed" in ctx
+        assert "no RNs indexed" in ctx

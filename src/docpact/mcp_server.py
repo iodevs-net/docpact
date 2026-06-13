@@ -597,7 +597,17 @@ def tool_navegar_referencias(referencia: str) -> dict[str, Any]:
 TOOLS = [
     {
         "name": "obtener_contexto_funcion",
-        "description": "Obtiene el contexto completo de una función: CONTRATO, RNs, tests, archivo, línea. Usa esto para entender qué hace una función antes de editarla.",
+        "description": (
+            "Obtiene el contexto completo de una función: CONTRATO, RNs asociadas, tests, archivo y línea. "
+            "Acepta nombre parcial (case-insensitive). Si hay múltiples coincidencias, retorna todas.\n\n"
+            "EJEMPLO — Antes de editar una función:\n"
+            "  Llamada: obtener_contexto_funcion(nombre_funcion='crear_ticket')\n"
+            "  Retorna: {existe: true, funcion: 'crear_ticket', contrato: {...}, rn_ids: ['RN-TKT-001'], "
+            "test: 'tests/test_tickets.py', archivo: 'soporte/services/tickets.py', linea: 42}\n\n"
+            "EJEMPLO — Búsqueda parcial:\n"
+            "  Llamada: obtener_contexto_funcion(nombre_funcion='ticket')\n"
+            "  Retorna: {existe: true, multiples: [...], count: 3} (todas las funciones con 'ticket' en el nombre)"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -611,7 +621,17 @@ TOOLS = [
     },
     {
         "name": "buscar_por_intencion",
-        "description": "Busca funciones por intención en lenguaje natural. Si FastEmbed está disponible, usa búsqueda semántica (cosine similarity + keyword). Retorna top 5 con score. Usa esto cuando no sabés el nombre exacto de la función.",
+        "description": (
+            "Busca funciones por intención en lenguaje natural. Si FastEmbed está disponible, usa búsqueda semántica "
+            "(cosine similarity + keyword matching: 0.7 semántica + 0.3 keyword). Fallback a keyword-only si no hay embeddings. "
+            "Retorna top 5 resultados con score de similitud.\n\n"
+            "EJEMPLO — No sabés el nombre exacto de la función:\n"
+            "  Llamada: buscar_por_intencion(intencion='validar RUT de cliente')\n"
+            "  Retorna: {resultados: [{funcion: 'validar_rut', ...}], scores: [0.8723], busqueda_tipo: 'semantica', count: 1}\n\n"
+            "EJEMPLO — Buscar funciones de facturación:\n"
+            "  Llamada: buscar_por_intencion(intencion='generar factura y enviar por email')\n"
+            "  Retorna: {resultados: [{funcion: 'generar_factura', ...}, {funcion: 'enviar_factura_email', ...}], scores: [0.81, 0.65]}"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -625,7 +645,26 @@ TOOLS = [
     },
     {
         "name": "validar_cambio",
-        "description": "Valida un diff Y ejecuta tests relevantes antes de commit. Si algún test falla, el cambio es INVÁLIDO. El agente NO puede commitar hasta que todo pase. Esto es ENFORCEMENT, no solo verificación.",
+        "description": (
+            "Valida un diff Y ejecuta tests relevantes antes de commit. Analiza RNs referenciadas en el diff "
+            "(verifica que existan en REGISTRO.md) y ejecuta SOLO los tests de esas RNs usando filtro pytest -k. "
+            "Si algún test falla, el cambio es INVÁLIDO y el agente NO puede commitar. Esto es ENFORCEMENT, no solo verificación.\n\n"
+            "EJEMPLO — Validar antes de commitar un cambio en tickets:\n"
+            "  Llamada: validar_cambio(\n"
+            "    archivo='soporte/services/tickets.py',\n"
+            "    diff='@@ -42,3 +42,5 @@\\n def crear_ticket(data):\\n+    if not data.get(\"prioridad\"):\\n"
+            "+        raise ValueError(\"Prioridad requerida\")\\n     # RN-TKT-001: ...'\n"
+            "  )\n"
+            "  Retorna: {valido: true, errores: [], warnings: [], test_results: [{test: 'tests/test_tickets.py', status: 'PASS'}], "
+            "resumen: 'APROBADO: cambio válido, podés commitar'}\n\n"
+            "EJEMPLO — Cambio que rompe una RN (test falla):\n"
+            "  Retorna: {valido: false, errores: [{tipo: 'test_fallido', test: 'tests/test_tickets.py', "
+            "mensaje: 'Test tests/test_tickets.py FALLÓ — tu cambio rompió el comportamiento existente'}], "
+            "resumen: 'BLOQUEADO: 1 error(es). Acciones: 1. Lee el output del test y corrige tu código'}\n\n"
+            "EJEMPLO — Referencia a RN inexistente:\n"
+            "  Retorna: {valido: false, errores: [{tipo: 'rn_fake', rn: 'RN-FAKE-999', "
+            "mensaje: \"RN 'RN-FAKE-999' no existe en REGISTRO.md\"}]}"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -648,7 +687,17 @@ TOOLS = [
     },
     {
         "name": "obtener_rn",
-        "description": "Obtiene el contexto completo de una RN: descripción, funciones que la implementan, test, estado. Usa esto para entender una regla de negocio específica.",
+        "description": (
+            "Obtiene el contexto completo de una RN: descripción, funciones que la implementan, test asociado, y estado. "
+            "Acepta ID parcial (retorna coincidencias). Usa esto para entender una regla de negocio específica.\n\n"
+            "EJEMPLO — Ver detalle de una RN:\n"
+            "  Llamada: obtener_rn(rn_id='RN-TKT-001')\n"
+            "  Retorna: {existe: true, descripcion: 'Los tickets deben tener prioridad asignada', "
+            "funciones: [{funcion: 'crear_ticket', archivo: 'tickets.py'}], tiene_test: true, test: 'tests/test_rn_TKT001.py'}\n\n"
+            "EJEMPLO — Búsqueda parcial:\n"
+            "  Llamada: obtener_rn(rn_id='TKT')\n"
+            "  Retorna: {existe: false, busqueda: 'TKT', coincidencias_parciales: ['RN-TKT-001', 'RN-TKT-002']}"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -662,7 +711,17 @@ TOOLS = [
     },
     {
         "name": "buscar_rns_por_tema",
-        "description": "Busca RNs por tema o palabra clave. Si FastEmbed está disponible, usa búsqueda semántica combinada con keyword. Retorna RNs relevantes con sus funciones.",
+        "description": (
+            "Busca RNs por tema o palabra clave. Si FastEmbed está disponible, usa búsqueda semántica combinada "
+            "(0.7 semántica + 0.3 keyword). Fallback a keyword-only. Retorna hasta 10 RNs relevantes con sus funciones.\n\n"
+            "EJEMPLO — Buscar RNs relacionadas con validación:\n"
+            "  Llamada: buscar_rns_por_tema(tema='validación RUT')\n"
+            "  Retorna: {rns: [{id: 'RN-CL-001', descripcion: 'El RUT debe ser válido...', funciones: [...]}], "
+            "count: 1, busqueda_tipo: 'semantica'}\n\n"
+            "EJEMPLO — Explorar RNs de facturación:\n"
+            "  Llamada: buscar_rns_por_tema(tema='facturación')\n"
+            "  Retorna: {rns: [{id: 'RN-FAC-001', ...}, {id: 'RN-FAC-002', ...}], count: 2}"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -676,7 +735,21 @@ TOOLS = [
     },
     {
         "name": "navegar_referencias",
-        "description": "Navega referencias cruzadas. Si pasás una RN, te dice qué funciones la implementan. Si pasás un archivo, te dice qué funciones tiene. Si pasás una función, te dice qué llama.",
+        "description": (
+            "Navega referencias cruzadas. Detecta automáticamente el tipo de referencia:\n"
+            "- Si empieza con 'RN-': muestra funciones que implementan esa RN\n"
+            "- Si contiene '/' o termina en '.py': muestra funciones del archivo y qué RNs usa\n"
+            "- Siempre: muestra qué funciones coinciden y sus dependencias\n\n"
+            "EJEMPLO — Ver qué funciones implementan una RN:\n"
+            "  Llamada: navegar_referencias(referencia='RN-TKT-001')\n"
+            "  Retorna: {tipo: 'rn', rn: {...}, funciones_que_la_implementan: [{funcion: 'crear_ticket'}, {funcion: 'editar_ticket'}]}\n\n"
+            "EJEMPLO — Ver qué hay en un archivo:\n"
+            "  Llamada: navegar_referencias(referencia='soporte/views/portal.py')\n"
+            "  Retorna: {tipo: 'archivo', funciones: [{funcion: 'dashboard'}, {funcion: 'listar_tickets'}], rns_usadas: ['RN-TKT-001']}\n\n"
+            "EJEMPLO — Buscar por nombre de función:\n"
+            "  Llamada: navegar_referencias(referencia='crear_ticket')\n"
+            "  Retorna: {tipo: 'funcion', funciones: [{funcion: 'crear_ticket', archivo: 'tickets.py', rn_ids: ['RN-TKT-001']}]}"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -690,7 +763,16 @@ TOOLS = [
     },
     {
         "name": "obtener_briefing",
-        "description": "Obtiene el briefing de reglas de negocio del proyecto. Lee esto ANTES de empezar a codear para entender qué debes respetar: RNs activas, side effects, zonas de riesgo.",
+        "description": (
+            "Obtiene el briefing completo de reglas de negocio del proyecto. Lee esto ANTES de empezar a codear "
+            "para entender qué debes respetar: RNs activas, side effects, zonas de riesgo. "
+            "El briefing se auto-regenera cuando el código cambia (fingerprint-based cache).\n\n"
+            "EJEMPLO — Inicio de sesión de trabajo:\n"
+            "  Llamada: obtener_briefing()\n"
+            "  Retorna: {briefing: '# Briefing DocPact\\n\\n## RNs Activas\\n- RN-TKT-001: ...', "
+            "path: 'docs/briefing.md', updated: true}\n\n"
+            "NO requiere parámetros. Llamar al inicio de cada sesión de coding."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -698,7 +780,21 @@ TOOLS = [
     },
     {
         "name": "modificar_archivo",
-        "description": "Valida un cambio contra los CONTRATOs antes de aplicarlo. Si el cambio viola side effects o RNs, lo RECHAZA. Usa esto SIEMPRE antes de modificar un archivo.",
+        "description": (
+            "Valida un cambio contra los CONTRATOs ANTES de aplicarlo. Analiza side effects declarados en los CONTRATOs "
+            "y verifica que el diff no viole ninguna RN. Si el cambio viola side effects o RNs, lo RECHAZA con detalles. "
+            "Usar SIEMPRE antes de modificar un archivo que tenga CONTRATOs.\n\n"
+            "EJEMPLO — Validar cambio antes de aplicar:\n"
+            "  Llamada: modificar_archivo(\n"
+            "    archivo='soporte/services/tickets.py',\n"
+            "    diff='def crear_ticket(data):\\n    # código nuevo que envía email\\n    send_email(to=data[\"email\"])'\n"
+            "  )\n"
+            "  Retorna: {allowed: true, message: 'Cambio válido', violations: []}\n\n"
+            "EJEMPLO — Cambio que viola un CONTRATO:\n"
+            "  Retorna: {allowed: false, message: 'Violación de CONTRATO', violations: [\n"
+            "    {funcion: 'crear_ticket', tipo: 'side_effect_no_declarado', "
+            "mensaje: \"Side effect 'email_send' no está en el CONTRATO\", sugerencia: \"Agregar 'email_send' al side_effects del CONTRATO\"}]}"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -716,7 +812,15 @@ TOOLS = [
     },
     {
         "name": "listar_rns",
-        "description": "Lista TODAS las RNs del proyecto con descripción, funciones que las implementan, y estado. Usa esto cuando el dueño de negocio pregunte 'qué reglas hay' o necesites ver el panorama completo.",
+        "description": (
+            "Lista TODAS las RNs del proyecto con descripción, funciones que las implementan, y estado (tiene test, "
+            "está en registro). Útil para ver el panorama completo o responder preguntas del dueño de negocio.\n\n"
+            "EJEMPLO — Ver todas las reglas:\n"
+            "  Llamada: listar_rns()\n"
+            "  Retorna: {rns: [{id: 'RN-TKT-001', descripcion: 'Tickets deben tener prioridad', "
+            "funciones: ['crear_ticket'], tiene_test: true, en_registro: true}, ...], total: 12, con_test: 8, en_registro: 12}\n\n"
+            "NO requiere parámetros. Usar cuando el dueño de negocio pregunte 'qué reglas hay' o necesites el panorama completo."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {},
@@ -724,7 +828,22 @@ TOOLS = [
     },
     {
         "name": "verificar_conflicto",
-        "description": "Verifica si una nueva RN entrará en conflicto con existentes. Detecta duplicados, overrides, y choques de concepto. SIEMPRE usar ANTES de crear una RN nueva.",
+        "description": (
+            "Verifica si una nueva RN entrará en conflicto con las existentes. Detecta tres tipos de conflictos:\n"
+            "1. Duplicados: descripción muy similar a una existente (similitud > 0.7)\n"
+            "2. Mismo concepto: tema similar que podría chocar (similitud > 0.4)\n"
+            "3. Overrides: afecta una función ya regulada por otra RN\n"
+            "SIEMPRE usar ANTES de crear una RN nueva.\n\n"
+            "EJEMPLO — Verificar antes de crear:\n"
+            "  Llamada: verificar_conflicto(rn_descripcion='Los tickets deben tener prioridad asignada antes de 24 horas')\n"
+            "  Retorna: {tiene_conflictos: true, conflictos: [{tipo: 'duplicado', rn_id: 'RN-TKT-001', "
+            "similitud: 0.85, explicacion: 'La RN propuesta es muy similar a RN-TKT-001', "
+            "accion: 'Revisá si es la misma regla. Si lo es, usá RN-TKT-001 en lugar de crear una nueva.'}], "
+            "consejo: 'Encontré posibles conflictos. Revisá cada uno antes de crear la RN.'}\n\n"
+            "EJEMPLO — Sin conflictos:\n"
+            "  Retorna: {tiene_conflictos: false, conflictos: [], total_conflictos: 0, "
+            "consejo: 'No detecté conflictos. Podés proceder a crear la RN.'}"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -738,7 +857,21 @@ TOOLS = [
     },
     {
         "name": "crear_rn",
-        "description": "Crea una nueva RN en el REGISTRO.md. VALIDAR PRIMERO con verificar_conflicto. El agente DEBE confirmar con el usuario antes de ejecutar.",
+        "description": (
+            "Crea una nueva RN en el REGISTRO.md. VALIDAR PRIMERO con verificar_conflicto para evitar duplicados. "
+            "El agente DEBE confirmar con el usuario antes de ejecutar. El ID debe seguir el formato RN-[CATEGORIA]-[NUMERO]. "
+            "Retorna la línea agregada y el siguiente paso (agregar la RN al CONTRATO de la función que la implementa).\n\n"
+            "EJEMPLO — Crear una nueva regla de negocio:\n"
+            "  Llamada: crear_rn(\n"
+            "    rn_id='RN-FAC-003',\n"
+            "    descripcion='Las facturas deben incluir IVA desglosado en la línea de detalle'\n"
+            "  )\n"
+            "  Retorna: {creada: true, rn_id: 'RN-FAC-003', descripcion: 'Las facturas deben incluir IVA...'\n"
+            "    linea_agregada: '- **RN-FAC-003**: Las facturas deben incluir IVA desglosado...',\n"
+            "    siguiente_paso: \"Agregar 'rn: [RN-FAC-003]' al CONTRATO de la función que la implementa.\"}\n\n"
+            "EJEMPLO — ID ya existe:\n"
+            "  Retorna: {error: \"La RN 'RN-TKT-001' ya existe.\", rn_existente: {...}, sugerencia: 'Usá obtener_rn para ver detalles'}"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -761,7 +894,23 @@ TOOLS = [
     },
     {
         "name": "explicar_rn",
-        "description": "Explica una RN en lenguaje simple para el dueño de negocio. Traduce técnica a natural: qué regla define, quién la implementa, si está verificada, y estado actual.",
+        "description": (
+            "Explica una RN en lenguaje simple para el dueño de negocio. Traduce la regla técnica a lenguaje natural: "
+            "qué regla define, quién la implementa, si tiene test (está verificada), y estado actual "
+            "(COMPLETA/PARCIAL/PENDIENTE). Útil para reuniones con stakeholders.\n\n"
+            "EJEMPLO — Explicar una regla para el dueño de negocio:\n"
+            "  Llamada: explicar_rn(rn_id='RN-TKT-001')\n"
+            "  Retorna: {existe: true, id: 'RN-TKT-001', "
+            "que_es: 'Los tickets deben tener prioridad asignada', "
+            "quien_la_implementa: ['crear_ticket', 'editar_ticket'], "
+            "donde_vive: ['soporte/services/tickets.py'], "
+            "tiene_test: true, estado: 'COMPLETA - Implementada y verificada con test', "
+            "resumen_para_dueno: \"La regla 'RN-TKT-001' dice: Los tickets deben tener prioridad asignada. "
+            "Está implementada en: crear_ticket, editar_ticket. Tiene test que la verifica.\"}\n\n"
+            "EJEMPLO — RN pendiente de implementación:\n"
+            "  Retorna: {..., estado: 'PENDIENTE - No hay código que la implemente', "
+            "resumen_para_dueno: \"... Todavía no tiene código que la cumpla. No tiene test aún.\"}"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -775,7 +924,21 @@ TOOLS = [
     },
     {
         "name": "setup_docpact",
-        "description": "Inicializa docpact en un proyecto: crea docpact.toml, directorio de docs, genera index.json. Ejecutar una sola vez al inicio.",
+        "description": (
+            "Inicializa docpact en un proyecto: crea docpact.toml (configuración), directorio docs/reglas-del-negocio/ "
+            "con REGISTRO.md, genera index.json (índice de funciones y RNs), y verifica FastEmbed. "
+            "Ejecutar una sola vez al inicio del proyecto.\n\n"
+            "EJEMPLO — Setup inicial:\n"
+            "  Llamada: setup_docpact(project_root='/home/user/mi-proyecto')\n"
+            "  Retorna: {setup_completo: true, pasos: [\n"
+            "    {paso: 'docpact.toml', estado: 'creado', path: '/home/user/mi-proyecto/docpact.toml'},\n"
+            "    {paso: 'docs/reglas-del-negocio/', estado: 'creado'},\n"
+            "    {paso: 'index.json', estado: 'generado', path: '...'},\n"
+            "    {paso: 'fastembed', estado: 'ok'}],\n"
+            "    siguiente_paso: 'Usar crear_contrato para agregar reglas de negocio'}\n\n"
+            "EJEMPLO — Re-ejecución (idempotente):\n"
+            "  Retorna: {setup_completo: true, pasos: [{paso: 'docpact.toml', estado: 'ya_existia'}, ...]}"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -788,7 +951,24 @@ TOOLS = [
     },
     {
         "name": "crear_contrato",
-        "description": "Genera un CONTRATO para una función desde lenguaje natural. Retorna el docstring formateado para insertar.",
+        "description": (
+            "Genera un CONTRATO para una función desde lenguaje natural. El CONTRATO es un docstring estructurado "
+            "con input, output, side_effects y RNs asociadas. Retorna el docstring formateado listo para insertar. "
+            "El agente debe confirmar con el usuario antes de escribir en el archivo.\n\n"
+            "EJEMPLO — Generar CONTRATO para una función nueva:\n"
+            "  Llamada: crear_contrato(\n"
+            "    archivo='src/tickets.py',\n"
+            "    funcion='crear_ticket',\n"
+            "    side_effects=['db_write', 'email_send'],\n"
+            "    rn=['RN-TKT-001'],\n"
+            "    input_desc='Dict con titulo, prioridad, asignado_a',\n"
+            "    output_desc='Ticket creado con ID'\n"
+            "  )\n"
+            "  Retorna: {contrato_generado: '    \"\"\"\\n    CONTRATO:\\n    input: Dict con titulo, prioridad, asignado_a\\n"
+            "    output: Ticket creado con ID\\n    side_effects: [db_write, email_send]\\n    rn: [RN-TKT-001]\\n    \"\"\"', "
+            "siguiente_paso: 'Agregar el CONTRATO al docstring de crear_ticket en src/tickets.py', "
+            "instruccion_agente: 'Insertar el siguiente CONTRATO al inicio del docstring... Usar modificar_archivo para aplicar el cambio.'}"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -804,7 +984,25 @@ TOOLS = [
     },
     {
         "name": "corregir_contrato",
-        "description": "Analiza un CONTRATO con problemas y sugiere corrección.",
+        "description": (
+            "Analiza un CONTRATO con problemas y sugiere corrección. Lee el docstring actual de la función, "
+            "lo muestra junto con el problema detectado, y da instrucciones para corregirlo. "
+            "Útil cuando la verificación encuentra CONTRATOs desactualizados o incorrectos.\n\n"
+            "EJEMPLO — Corregir side effects que no coinciden:\n"
+            "  Llamada: corregir_contrato(\n"
+            "    archivo='src/tickets.py',\n"
+            "    funcion='crear_ticket',\n"
+            "    problema='side_effects no coincide con implementación'\n"
+            "  )\n"
+            "  Retorna: {archivo: 'src/tickets.py', funcion: 'crear_ticket', "
+            "problema_detectado: 'side_effects no coincide con implementación', "
+            "docstring_actual: 'CONTRATO:\\n    input: ...\\n    side_effects: [db_write]\\n    ...', "
+            "instruccion_agente: 'Revisar el CONTRATO de crear_ticket en src/tickets.py. "
+            "Problema: side_effects no coincide con implementación. Usar modificar_archivo para aplicar la corrección.'}\n\n"
+            "EJEMPLO — RN referenciada que ya no existe:\n"
+            "  Llamada: corregir_contrato(archivo='src/facturas.py', funcion='emitir_factura', "
+            "problema='RN-FAC-999 no existe en REGISTRO.md')"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -817,7 +1015,19 @@ TOOLS = [
     },
     {
         "name": "ejecutar_verificacion",
-        "description": "Ejecuta verificación completa de CONTRATOs. Retorna errores, warnings y métricas.",
+        "description": (
+            "Ejecuta verificación completa de CONTRATOs en todo el proyecto. Analiza cada archivo Python, "
+            "verifica que los CONTRATOs sean correctos (side effects declarados, RNs válidas, formato correcto), "
+            "y retorna errores, warnings y un score de calidad (0-100).\n\n"
+            "EJEMPLO — Verificar todo el proyecto:\n"
+            "  Llamada: ejecutar_verificacion()\n"
+            "  Retorna: {ejecutado: true, total_funciones: 45, funciones_con_contrato: 38, "
+            "total_errores: 2, total_warnings: 5, score: 84, nivel: 'B', "
+            "errores: [{archivo: 'tickets.py', funcion: 'crear_ticket', mensaje: 'side_effect email_send no declarado'}], "
+            "warnings: [{archivo: 'facturas.py', funcion: 'emitir', mensaje: 'RN-FAC-003 no tiene test'}]}\n\n"
+            "EJEMPLO — Verificar un proyecto específico:\n"
+            "  Llamada: ejecutar_verificacion(project_root='/home/user/mi-proyecto')"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -827,7 +1037,19 @@ TOOLS = [
     },
     {
         "name": "ejecutar_tests",
-        "description": "Ejecuta tests de Reglas de Negocio con pytest. Retorna si pasaron o fallaron.",
+        "description": (
+            "Ejecuta tests de Reglas de Negocio con pytest (tests/ directory, -x para stop on first failure, "
+            "-q para output conciso). Retorna si pasaron o fallaron con el output relevante. "
+            "Útil para verificar que los cambios no rompen RNs existentes.\n\n"
+            "EJEMPLO — Ejecutar todos los tests:\n"
+            "  Llamada: ejecutar_tests()\n"
+            "  Retorna: {ejecutado: true, exito: true, output: '45 passed in 3.2s', return_code: 0}\n\n"
+            "EJEMPLO — Tests con fallos:\n"
+            "  Retorna: {ejecutado: true, exito: false, output: 'FAILED tests/test_tickets.py::test_crear_ticket_sin_prioridad', "
+            "return_code: 1}\n\n"
+            "EJEMPLO — Ejecutar tests de otro proyecto:\n"
+            "  Llamada: ejecutar_tests(project_root='/home/user/otro-proyecto')"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -837,7 +1059,17 @@ TOOLS = [
     },
     {
         "name": "generar_reporte",
-        "description": "Genera reporte de reglas de negocio: cuántas RNs hay, cuántas tienen código, cuántas tienen test.",
+        "description": (
+            "Genera reporte de reglas de negocio del proyecto: total de RNs, cuántas tienen código implementado, "
+            "cuántas tienen test, y detalle de cada RN. Útil para dashboards, reuniones de estado, o auditorías.\n\n"
+            "EJEMPLO — Reporte completo:\n"
+            "  Llamada: generar_reporte()\n"
+            "  Retorna: {generado: true, total_rns: 12, rns_con_codigo: 10, rns_con_test: 8, "
+            "rns_sin_codigo: 2, resumen: '12 RNs totales, 10 con código, 8 con test', "
+            "rns: [{id: 'RN-TKT-001', descripcion: '...', tiene_codigo: true, tiene_test: true, en_registro: true}, ...]}\n\n"
+            "EJEMPLO — Reporte de otro proyecto:\n"
+            "  Llamada: generar_reporte(project_root='/home/user/mi-proyecto')"
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1461,6 +1693,85 @@ def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
     return fn()
 
 
+def _build_agent_context() -> str:
+    """Build agent-facing context string from the loaded index.
+
+    Returns a comprehensive description of project state, available tools,
+    and recommended workflow — injected into the MCP initialize response
+    so agents understand docpact's capabilities without reading external docs.
+    """
+    # ── Project stats ──
+    stats_section = "No project index loaded yet."
+    if _index is not None:
+        stats = _index.get("stats", {})
+        total_funcs = stats.get("total_funciones", 0)
+        funcs_with_rn = stats.get("funciones_con_rn", 0)
+        total_rns = stats.get("total_rns", 0)
+        rns_with_test = stats.get("rns_con_test", 0)
+        has_emb = stats.get("has_embeddings", False)
+
+        coverage = (
+            f"{funcs_with_rn}/{total_funcs} functions have CONTRATOs"
+            if total_funcs > 0
+            else "no functions indexed"
+        )
+        rn_coverage = (
+            f"{rns_with_test}/{total_rns} RNs have tests"
+            if total_rns > 0
+            else "no RNs indexed"
+        )
+        embedding_status = "enabled (semantic search active)" if has_emb else "disabled (keyword-only search)"
+
+        stats_section = (
+            f"- Functions: {total_funcs} total, {coverage}\n"
+            f"- Business Rules (RNs): {total_rns} total, {rn_coverage}\n"
+            f"- Semantic search: {embedding_status}\n"
+            f"- Project root: {_project_root}"
+        )
+
+    return (
+        "# Docpact — Business Rule Type Checker\n\n"
+        "docpact verifies that Python code implements declared business rules.\n"
+        "Functions declare contracts (CONTRATOs) in docstrings; docpact checks\n"
+        "side effects, RN references, and test coverage against those declarations.\n\n"
+        "## Project Status\n"
+        f"{stats_section}\n\n"
+        "## Available Tools (18 total)\n\n"
+        "**Discovery & Context** — understand the codebase before editing:\n"
+        "- `obtener_contexto_funcion` — full context for a function (contract, RNs, tests, location)\n"
+        "- `buscar_por_intencion` — semantic/keyword search for functions by intent\n"
+        "- `obtener_rn` — full context for a business rule\n"
+        "- `buscar_rns_por_tema` — search RNs by topic\n"
+        "- `navegar_referencias` — cross-reference navigation (RN→functions, file→functions, function→calls)\n"
+        "- `obtener_briefing` — project briefing with active RNs, side effects, risk zones\n"
+        "- `listar_rns` — list all business rules with status\n\n"
+        "**Validation & Enforcement** — gate changes before commit:\n"
+        "- `validar_cambio` — validate a diff + run relevant tests (ENFORCEMENT)\n"
+        "- `modificar_archivo` — validate changes against contracts before applying\n\n"
+        "**Contract Management** — create and maintain CONTRATOs:\n"
+        "- `crear_contrato` — generate a CONTRATO docstring from natural language\n"
+        "- `corregir_contrato` — diagnose and fix a broken CONTRATO\n\n"
+        "**RN Management** — manage business rules lifecycle:\n"
+        "- `verificar_conflicto` — check if a new RN conflicts with existing ones\n"
+        "- `crear_rn` — create a new business rule (verify conflicts first!)\n"
+        "- `explicar_rn` — explain an RN in plain language\n\n"
+        "**Operations** — run checks and generate reports:\n"
+        "- `ejecutar_verificacion` — full CONTRATO verification run\n"
+        "- `ejecutar_tests` — run business rule tests with pytest\n"
+        "- `generar_reporte` — generate coverage/compliance report\n"
+        "- `setup_docpact` — initialize docpact in a project\n\n"
+        "## Recommended Workflow\n\n"
+        "1. **Start here**: Call `obtener_briefing` to understand the project's business rules\n"
+        "2. **Before editing**: Call `obtener_contexto_funcion` on any function you plan to change\n"
+        "3. **After editing**: Call `validar_cambio` with your diff — this is ENFORCEMENT, not optional\n"
+        "4. **Adding features**: Verify conflicts with `verificar_conflicto`, then `crear_rn`, then `crear_contrato`\n"
+        "5. **Exploring**: Use `buscar_por_intencion` when you don't know the function name\n\n"
+        "## Further Reading\n\n"
+        "See DOCPACT_AGENT_GUIDE.md in the project root for detailed usage patterns,\n"
+        "CONTRATO format specification, and integration examples."
+    )
+
+
 def main() -> int:
     """Loop principal del MCP server v2."""
     _log_startup_info()
@@ -1494,6 +1805,8 @@ def main() -> int:
                 force = params.get("force", False)
                 _cargar_o_generar_index(project_root, force=force)
 
+                agent_context = _build_agent_context()
+
                 _responder(
                     req_id,
                     {
@@ -1503,6 +1816,7 @@ def main() -> int:
                             "name": "docpact-mcp",
                             "version": "2.0.0",
                         },
+                        "instructions": agent_context,
                     },
                 )
 
