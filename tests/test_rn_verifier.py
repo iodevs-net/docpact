@@ -8,6 +8,7 @@ import sys
 
 from docpact.checker.rn_verifier import (
     RN_PATTERNS,
+    _check_order,
     verify_rn,
     verify_all_rns,
     print_results,
@@ -176,3 +177,163 @@ def test_print_results_shows_missing(tmp_path: Path) -> None:
 
     output = captured.getvalue()
     assert "PermissionError" in output
+
+
+# ── _check_order ──────────────────────────────────────────────────
+
+
+def test_check_order_pass() -> None:
+    """check keyword appears BEFORE operation keyword -> PASS."""
+    source = (
+        "if user.rol == 'RESTRINGIDO':\n"
+        "    raise PermissionError('No puede')\n"
+        "ticket.create(data)\n"
+    )
+    assert _check_order(source, "RESTRINGIDO", ".create(") == "PASS"
+
+
+def test_check_order_fail() -> None:
+    """check keyword appears AFTER operation keyword -> ORDER_FAIL."""
+    source = (
+        "ticket.create(data)\n"
+        "if user.rol == 'RESTRINGIDO':\n"
+        "    raise PermissionError('No puede')\n"
+    )
+    assert _check_order(source, "RESTRINGIDO", ".create(") == "ORDER_FAIL"
+
+
+def test_check_order_no_check() -> None:
+    """check keyword not found in source -> NO_CHECK."""
+    source = "ticket.create(data)\n"
+    assert _check_order(source, "RESTRINGIDO", ".create(") == "NO_CHECK"
+
+
+def test_check_order_no_operation() -> None:
+    """operation keyword not found in source -> NO_CHECK."""
+    source = "if user.rol == 'RESTRINGIDO':\n    raise PermissionError\n"
+    assert _check_order(source, "RESTRINGIDO", ".create(") == "NO_CHECK"
+
+
+def test_check_order_same_line() -> None:
+    """check and operation on same line -> check comes first (PASS)."""
+    source = "if RESTRINGIDO: raise Error before .create(\n"
+    assert _check_order(source, "RESTRINGIDO", ".create(") == "PASS"
+
+
+def test_check_order_same_line_reversed() -> None:
+    """operation before check on same line -> ORDER_FAIL."""
+    source = ".create(data) if RESTRINGIDO\n"
+    assert _check_order(source, "RESTRINGIDO", ".create(") == "ORDER_FAIL"
+
+
+# ── verify_rn order integration ──────────────────────────────────
+
+
+def test_verify_rn_order_pass(tmp_path: Path) -> None:
+    """RN with check_before: check before operation -> order PASS."""
+    _write_source(
+        tmp_path,
+        "soporte/services/tickets.py",
+        "class Tickets:\n"
+        "    def crear(self, user):\n"
+        "        if user.rol == 'RESTRINGIDO':\n"
+        "            raise PermissionError('No puede crear tickets')\n"
+        "        ticket = Ticket.objects.create(data)\n",
+    )
+    result = verify_rn("RN-008", tmp_path)
+
+    assert result["status"] == "PASS"
+    assert result["order"] == "PASS"
+
+
+def test_verify_rn_order_fail(tmp_path: Path) -> None:
+    """RN with check_before: check after operation -> order ORDER_FAIL."""
+    _write_source(
+        tmp_path,
+        "soporte/services/tickets.py",
+        "class Tickets:\n"
+        "    def crear(self, user):\n"
+        "        ticket = Ticket.objects.create(data)\n"
+        "        if user.rol == 'RESTRINGIDO':\n"
+        "            raise PermissionError('No puede crear tickets')\n",
+    )
+    result = verify_rn("RN-008", tmp_path)
+
+    assert result["status"] == "PASS"
+    assert result["order"] == "ORDER_FAIL"
+
+
+def test_verify_rn_order_no_check(tmp_path: Path) -> None:
+    """RN with check_before: check keyword missing -> order NO_CHECK."""
+    _write_source(
+        tmp_path,
+        "soporte/services/tickets.py",
+        "class Tickets:\n"
+        "    def crear(self, user):\n"
+        "        ticket = Ticket.objects.create(data)\n",
+    )
+    result = verify_rn("RN-008", tmp_path)
+
+    assert result["status"] == "FAIL"
+    assert result["order"] == "NO_CHECK"
+
+
+def test_verify_rn_order_empty_string_when_no_check_before(tmp_path: Path) -> None:
+    """RN without check_before/blocks -> order is empty string."""
+    _write_source(
+        tmp_path,
+        "soporte/constants.py",
+        "ESTADOS_TERMINALES = ['resuelto']\n",
+    )
+    result = verify_rn("RN-006", tmp_path)
+
+    assert result["status"] == "PASS"
+    assert result["order"] == ""
+
+
+def test_verify_rn_order_no_pattern() -> None:
+    """RN not in patterns -> order is empty string."""
+    result = verify_rn("RN-99999", Path("/nonexistent"))
+
+    assert result["status"] == "NO_PATTERN"
+    assert result["order"] == ""
+
+
+def test_verify_rn_order_file_missing() -> None:
+    """RN with check_before but file missing -> order NO_CHECK."""
+    result = verify_rn("RN-008", Path("/nonexistent"))
+
+    assert result["status"] == "FAIL"
+    assert result["order"] == "NO_CHECK"
+
+
+def test_verify_rn_all_have_order_key(tmp_path: Path) -> None:
+    """All RN results must include the 'order' key."""
+    results = verify_all_rns(tmp_path)
+    for r in results:
+        assert "order" in r, f"{r['rn_id']} missing 'order' key"
+        assert r["order"] in ("", "PASS", "ORDER_FAIL", "NO_CHECK")
+
+
+def test_print_results_shows_order_column(tmp_path: Path) -> None:
+    """print_results includes ORDER column in output."""
+    _write_source(
+        tmp_path,
+        "soporte/services/tickets.py",
+        "if user.rol == 'RESTRINGIDO':\n"
+        "    raise PermissionError('No puede')\n"
+        "ticket.create(data)\n",
+    )
+    result = verify_rn("RN-008", tmp_path)
+    assert result["order"] == "PASS"
+
+    captured = StringIO()
+    old_stdout = sys.stdout
+    sys.stdout = captured
+    try:
+        print_results([result])
+    finally:
+        sys.stdout = old_stdout
+
+    output = captured.getvalue()
+    assert "ORDER:" in output
