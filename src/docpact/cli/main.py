@@ -25,7 +25,8 @@ def main(argv: list[str] | None = None) -> int:
     """Punto de entrada principal del CLI."""
     parser = argparse.ArgumentParser(
         prog="docpact",
-        description="Verificador de CONTRATOS en código — sincroniza docstrings con implementación real",
+        description="Type checker for business rules — verifies code implements the rules declared in CONTRATOs",
+        epilog="Quick start: docpact check . && docpact verify-rn --project-root . && docpact traceability --project-root .",
     )
     parser.add_argument(
         "--version", action="version", version=f"docpact {_get_version()}"
@@ -35,7 +36,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # ├─ extract
     extract_parser = subparsers.add_parser(
-        "extract", help="Extrae CONTRATOS de archivos Python/TypeScript/JSX"
+        "extract",
+        help=(
+            "Extract CONTRATOs from Python/TypeScript/JSX files as JSON or text. "
+            "Use to inspect what docpact sees before running check"
+        ),
     )
     extract_parser.add_argument(
         "path", type=str, help="Archivo o directorio a analizar"
@@ -51,7 +56,12 @@ def main(argv: list[str] | None = None) -> int:
 
     # ├─ check  (Fase 2 — placeholder)
     check_parser = subparsers.add_parser(
-        "check", help="Verifica CONTRATOS contra implementación"
+        "check",
+        help=(
+            "Verifica CONTRATOS: side_effects, dependencias y RNs fake. "
+            "Ejecutar después de escribir o modificar código. "
+            "Para arreglar errores: agregar CONTRATO faltante o corregir side_effects en el docstring"
+        ),
     )
     check_parser.add_argument("path", type=str, help="Archivo o directorio a verificar")
     check_parser.add_argument(
@@ -115,7 +125,11 @@ def main(argv: list[str] | None = None) -> int:
     # ├─ lint (análisis estático puro — sin pytest)
     lint_parser = subparsers.add_parser(
         "lint",
-        help="Análisis estático puro de CONTRATOS (sin pytest, ideal para pre-commit)",
+        help=(
+            "Static-only CONTRATO analysis (no pytest). "
+            "Checks docstring syntax, side_effects declarations, and RN fake detection. "
+            "Faster than 'check' — ideal for pre-commit hooks"
+        ),
     )
     lint_parser.add_argument("path", type=str, help="Archivo o directorio a verificar")
     lint_parser.add_argument(
@@ -165,7 +179,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # ├─ test (ejecución dinámica de tests RN)
     test_parser = subparsers.add_parser(
-        "test", help="Ejecuta tests de Reglas de Negocio con pytest"
+        "test",
+        help=(
+            "Execute RN business rule tests with pytest. "
+            "Runs tests/rn/ directory to verify that declared rules actually work at runtime"
+        ),
     )
     test_parser.add_argument("path", type=str, help="Archivo o directorio a verificar")
     test_parser.add_argument(
@@ -194,7 +212,12 @@ def main(argv: list[str] | None = None) -> int:
 
     # ├─ validate — pre-commit hook (rápido, sin tests)
     validate_parser = subparsers.add_parser(
-        "validate", help="Valida cambios críticos (pre-commit hook, <1s)"
+        "validate",
+        help=(
+            "Hook pre-commit: valida CONTRATOS en archivos staged (<1s). "
+            "Solo revisa archivos que se están commiteando. "
+            "Falla si CONTRATOs declarados contradicen la implementación"
+        ),
     )
     validate_parser.add_argument(
         "files", nargs="*", help="Archivos a validar (git staged files si se omite)"
@@ -207,7 +230,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # ├─ mcp
     mcp_parser = subparsers.add_parser(
-        "mcp", help="Inicia el MCP server para agentes (JSON-RPC sobre stdio)"
+        "mcp",
+        help=(
+            "Start MCP server for agent integration (JSON-RPC over stdio). "
+            "Provides docpact tools to AI agents via Model Context Protocol"
+        ),
     )
     mcp_parser.add_argument(
         "--project-root",
@@ -282,7 +309,10 @@ def main(argv: list[str] | None = None) -> int:
     # ├─ config-suggest
     suggest_parser = subparsers.add_parser(
         "config-suggest",
-        help="Sugiere bloques [docpact.rn_patrones.RN-XXX] para RNs sin validador",
+        help=(
+            "Suggest docpact.toml patterns for RNs without validators. "
+            "Use when 'verify-rn' reports NO_PATTERN for a business rule"
+        ),
     )
     suggest_parser.add_argument(
         "--project-root",
@@ -310,7 +340,10 @@ def main(argv: list[str] | None = None) -> int:
     # ├─ report — delta REGISTRO.md vs código
     report_parser = subparsers.add_parser(
         "report",
-        help="Delta entre REGISTRO.md (reglas declaradas) y código real (implementación)",
+        help=(
+            "Reporte delta: muestra reglas declaradas en REGISTRO.md vs evidencia en código. "
+            "Útil para identificar RNs sin implementación o código sin CONTRATO"
+        ),
     )
     report_parser.add_argument(
         "--project-root",
@@ -337,7 +370,11 @@ def main(argv: list[str] | None = None) -> int:
     # ├─ traceability — RN Traceability Matrix
     traceability_parser = subparsers.add_parser(
         "traceability",
-        help="Matriz de trazabilidad RN: declaraciones, tests y cobertura",
+        help=(
+            "Matriz de trazabilidad: cruza RNs declaradas con tests existentes. "
+            "Muestra %% de cobertura por módulo. "
+            "Un 100%% significa que toda regla declarada tiene al menos un test"
+        ),
     )
     traceability_parser.add_argument(
         "--project-root",
@@ -372,7 +409,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     # ├─ init  (Fase 4 — placeholder)
     init_parser = subparsers.add_parser(
-        "init", help="Genera esqueletos de CONTRATO para funciones sin contrato"
+        "init",
+        help=(
+            "Generate CONTRATO skeletons for functions missing them. "
+            "Use --batch to scaffold an entire directory, or --function for one"
+        ),
     )
     init_parser.add_argument("path", type=str, help="Archivo o directorio")
     init_parser.add_argument(
@@ -388,7 +429,13 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     # ├─ run
-    run_parser = subparsers.add_parser("run", help="Verificación dinámica en sandbox")
+    run_parser = subparsers.add_parser(
+        "run",
+        help=(
+            "Dynamic verification in a sandbox. "
+            "Executes code and tests in isolation to verify side effects at runtime"
+        ),
+    )
     run_parser.add_argument(
         "path",
         type=str,
@@ -403,7 +450,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # ├─ doctor
     doctor_parser = subparsers.add_parser(
-        "doctor", help="Autodiagnóstico del ecosistema"
+        "doctor",
+        help=(
+            "Self-diagnosis of the docpact ecosystem. "
+            "Checks Python version, installed packages, config files, and project health"
+        ),
     )
     doctor_parser.add_argument(
         "path", type=str, nargs="?", default=".", help="Raíz del proyecto"
@@ -417,7 +468,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # ├─ fix
     fix_parser = subparsers.add_parser(
-        "fix", help="Auto-corrige warnings de firma en CONTRATOS"
+        "fix",
+        help=(
+            "Auto-fix CONTRATO signature warnings. "
+            "Updates docstrings to match actual function signatures (argument names, types)"
+        ),
     )
     fix_parser.add_argument("path", type=str, help="Archivo o directorio a corregir")
     fix_parser.add_argument(
@@ -428,7 +483,12 @@ def main(argv: list[str] | None = None) -> int:
 
     # ├─ verify-rn — verifica patrones RN hardcoded en código
     verify_rn_parser = subparsers.add_parser(
-        "verify-rn", help="Verificar RN patterns existen en código fuente"
+        "verify-rn",
+        help=(
+            "Verifica que patrones de RNs (Reglas de Negocio) existan en código fuente. "
+            "Chequea existencia de patrones y orden de validación. "
+            "Ejecutar antes de cada commit para asegurar que reglas declaradas estén implementadas"
+        ),
     )
     verify_rn_parser.add_argument(
         "--project-root",
