@@ -404,7 +404,7 @@ def _procesar_funcion(
                 )
             )
     elif config.rn_patrones and archivo and contrato.rn:
-        from docpact.checker.semantic_rn import validar_rn
+        from docpact.checker.semantic import validar_rn
         from docpact.checker.rn_patterns import verificar_rn_patrones
 
         # Resolver proyecto_root una sola vez para validadores que lo necesitan
