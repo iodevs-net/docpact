@@ -190,6 +190,6 @@ def extraer_rns_de_proyecto(raiz: Path) -> dict:
                 "confianza": r.confianza,
                 "tipo": r.tipo,
             }
-            for r in rns_totales[:50]  # Top 50
+            for r in rns_totales  # All rules
         ],
     }
