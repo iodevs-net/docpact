@@ -1,17 +1,19 @@
 # docpact
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/fandijos/docpact)
-[![Python](https://img.shields.io/badge/python-%3E%3D3.10-green.svg)](https://www.python.org/)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/iodevs-net/docpact)
+[![Python](https://img.shields.io/badge/python-%3E%3D3.10-green.svg)](https://github.com/iodevs-net/docpact)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![MCP](https://img.shields.io/badge/MCP-18%20tools-purple.svg)](#mcp-tools-18-total)
+[![MCP](https://img.shields.io/badge/MCP-27%20tools-purple.svg)](#mcp-tools-27-total)
 
 **The type checker for business rules.**
 
 docpact verifies that your code actually implements the business rules you declared. It doesn't replace your linter, type checker, or test runner — it fills the gap none of them cover.
 
 ```bash
-pip install docpact
+pip install git+https://github.com/iodevs-net/docpact.git
 ```
+
+> **Installation note**: docpact is not yet published on PyPI. Install directly from the repository until the 1.0.1 release. For semantic search support: `pip install "docpact[semantic] @ git+https://github.com/iodevs-net/docpact.git"`.
 
 ## Quick Start for Agents
 
@@ -32,7 +34,7 @@ If all three pass, your changes are contractually sound. If any fail, see **Trou
 
 ### Quick Start with MCP
 
-For AI agents connected via [Model Context Protocol](https://modelcontextprotocol.io/), docpact exposes 18 tools natively. Start the server:
+For AI agents connected via [Model Context Protocol](https://modelcontextprotocol.io/), docpact exposes 27 tools natively. Start the server:
 
 ```bash
 docpact mcp
@@ -47,11 +49,11 @@ The recommended agent workflow:
 
 For the full MCP tools reference and integration patterns, see the **[Agent Guide](DOCPACT_AGENT_GUIDE.md)**.
 
-## MCP Tools (18 Total)
+## MCP Tools (27 Total)
 
-docpact exposes 18 MCP tools organized by purpose. Tools use semantic search powered by [FastEmbed](https://github.com/qdrant/fastembed) when available, with keyword fallback.
+docpact exposes 27 MCP tools organized by purpose. Tools use semantic search powered by [FastEmbed](https://github.com/qdrant/fastembed) when available, with keyword fallback.
 
-### Discovery & Context
+### Discovery & Context (5)
 
 | Tool | Purpose |
 |------|---------|
@@ -61,7 +63,7 @@ docpact exposes 18 MCP tools organized by purpose. Tools use semantic search pow
 | `obtener_briefing` | Project briefing with active RNs, side effects, risk zones |
 | `listar_rns` | List all business rules with descriptions, functions, and test status |
 
-### RN Management
+### RN Management (5)
 
 | Tool | Purpose |
 |------|---------|
@@ -71,21 +73,32 @@ docpact exposes 18 MCP tools organized by purpose. Tools use semantic search pow
 | `crear_rn` | Create a new business rule in REGISTRO.md |
 | `explicar_rn` | Explain an RN in plain language for stakeholders |
 
-### Validation & Enforcement
+### Validation & Enforcement (4)
 
 | Tool | Purpose |
 |------|---------|
 | `validar_cambio` | Validate a diff + run relevant RN tests (enforcement gate) |
 | `modificar_archivo` | Validate changes against CONTRATOs before applying |
+| `explicar_errores` | Translate docpact error codes into plain language with fix suggestions |
+| `predecir_bugs` | AST-based bug prediction (mutable defaults, bare except, resource leaks) |
 
-### Contract Management
+### Contract Management (2)
 
 | Tool | Purpose |
 |------|---------|
 | `crear_contrato` | Generate a CONTRATO docstring from natural language |
 | `corregir_contrato` | Diagnose and fix a broken CONTRATO |
 
-### Operations
+### Discovery & Auto-generation (4)
+
+| Tool | Purpose |
+|------|---------|
+| `extraer_rns` | Analyze a project and extract implicit business rules (regex + AST) |
+| `descubrir_reglas` | Find business rules not yet declared in CONTRATOs |
+| `generar_codigo` | Generate code stubs from a CONTRATO spec |
+| `config-suggest` | Suggest docpact.toml patterns for RNs without validators (CLI) |
+
+### Operations (7)
 
 | Tool | Purpose |
 |------|---------|
@@ -93,14 +106,20 @@ docpact exposes 18 MCP tools organized by purpose. Tools use semantic search pow
 | `ejecutar_tests` | Run business rule tests with pytest |
 | `generar_reporte` | Generate coverage and compliance report |
 | `setup_docpact` | Initialize docpact in a project (config, registry, index) |
+| `metricas_violaciones` | Live metrics: how many CONTRATOs are violated, by category |
+| `sugerir_reglas` | Suggest rules to formalize based on code patterns |
+| `salud_reglas` | Health check of the rule registry: orphans, conflicts, gaps |
+| `priorizar_reglas` | Rank rules by impact (coverage, violations, risk) |
+
+> **Note**: The "Reglas Vivas" suite (`metricas_violaciones`, `sugerir_reglas`, `salud_reglas`, `priorizar_reglas`, `predecir_bugs`, `generar_codigo`, `descubrir_reglas`, `extraer_rns`, `explicar_errores`) was added in commit `9335cfa` and is not yet documented in `DOCPACT_AGENT_GUIDE.md`. See `CHANGELOG.md` for the full list.
 
 ## FastEmbed Semantic Detection
 
-When [FastEmbed](https://github.com/qdrant/fastembed) is installed, docpact uses vector embeddings for semantic search across functions and RNs. The `buscar_por_intencion` and `buscar_rns_por_tema` tools combine cosine similarity (70%) with keyword matching (30%) for accurate results — even when the user's description doesn't match function names literally.
+When [FastEmbed](https://github.com/qdrant/fastembed) is installed, docpact uses vector embeddings powered by the `jina-embeddings-v2-base-es` model for semantic search across functions and RNs. The `buscar_por_intencion` and `buscar_rns_por_tema` tools combine cosine similarity (70%) with keyword matching (30%) for accurate results — even when the user's description doesn't match function names literally.
 
 ```bash
 # Install with semantic search support
-pip install docpact[semantic]
+pip install "docpact[semantic] @ git+https://github.com/iodevs-net/docpact.git"
 ```
 
 When FastEmbed is not available, docpact falls back to keyword-only search automatically. No configuration needed.
@@ -146,7 +165,7 @@ The `validar_cambio` tool is enforcement, not advisory. It runs the relevant RN 
 docpact validate --staged
 ```
 
-This runs in under 1 second. It checks only the files you staged. Add it to your git hooks:
+This runs in under 1 second. It checks only the files you staged. Add it to git hooks:
 
 ```bash
 echo 'docpact validate --staged' > .git/hooks/pre-commit
@@ -166,7 +185,7 @@ If your code says `rn: [RN-008]` (restricted clients can't create tickets), docp
 docpact does **not** replace these tools:
 
 | Tool | What it does | docpact overlap |
-|------|-------------|-----------------|
+|------|-------------|----------------|
 | ruff / pylint | Syntax, style, complexity | None |
 | mypy / pyright | Type checking | None |
 | pytest | Test execution | None |
@@ -175,11 +194,13 @@ docpact does **not** replace these tools:
 
 docpact fills a **different gap**: verifying that declared business rules are actually implemented in code. No other tool does this.
 
-## Why it exists
+## Honest limitations
 
-In AI-generated codebases, agents write code AND declare business rules. But who verifies that the declarations match reality?
+In the spirit of the project's "honest metrics" policy (see `docs/marker-honesty.md`):
 
-docpact does. It's the quality gate between "I wrote a business rule" and "the business rule is actually implemented."
+- **`extraer_rns` is a starting point, not ground truth.** It uses regex + AST patterns and overcounts: in a 105-file Django project, it reports ~1,400 "rule evidences" grouped into 11 categories, where many are false positives (string literals, queries, docstrings, UI copy that match the pattern). Use it to discover candidates, then validate manually.
+- **`init --batch` scaffolds empty CONTRATOs.** Empty CONTRATOs are worse than no CONTRATO because they create a false sense of coverage. Use `init` per-function, write the actual side_effects and rn fields, then commit.
+- **Semantic search is optional.** Without FastEmbed, `buscar_por_intencion` and `buscar_rns_por_tema` fall back to keyword search. Install the `[semantic]` extra for better discovery.
 
 ## Commands
 
@@ -193,7 +214,7 @@ docpact does. It's the quality gate between "I wrote a business rule" and "the b
 | `docpact test .` | Execute RN tests with pytest |
 | `docpact test-quality` | Evaluate test quality for RN coverage |
 | `docpact llm-judge` | LLM-based evaluation of contract quality |
-| `docpact extract` | Extract contracts as JSON |
+| `docpact extract` | Extract existing CONTRATOs as JSON |
 | `docpact index` | Build pre-computed index for MCP server |
 | `docpact init` | Generate contract template for a function |
 | `docpact fix .` | Auto-fix contract signature warnings |
@@ -209,7 +230,7 @@ docpact does. It's the quality gate between "I wrote a business rule" and "the b
 
 ## Formal Specification
 
-docpact implements the **Contrato Protocol v1** — a formal contract system for AI-native Python codebases. The protocol is specified in `docs/protocolo-v1/` with 7 documents covering schema, syntax, verification stages, and examples.
+docpact implements the **Contrato Protocol v2** — a formal contract system for AI-native Python codebases. The protocol is specified in `docs/spec/` with 7 documents covering schema, syntax, verification stages, and examples.
 
 Key properties of the protocol:
 - Every `.py` file is both implementation and specification
@@ -298,157 +319,45 @@ docpact traceability --project-root .
   RN-001       FULL             soporte/state_machine/...       tests/rn/test_rn_001.py
   RN-008       FULL             clientes/models.py:activo       tests/rn/test_rn_008.py
   RN-SEC-001   FULL             nucleo/middleware/...            tests/rn/test_rn_SEC-001.py
-
+…
   Summary: FULL: 79 | DECLARED_ONLY: 2 | TEST_ONLY: 10 | Coverage: 87%
 ```
 
-Status meanings:
-- **FULL** — Declared in code AND has a passing test. No action needed.
-- **DECLARED_ONLY** — Has a CONTRATO but no test. Write a test in `tests/rn/`.
-- **TEST_ONLY** — Has a test but no CONTRATO. Add a CONTRATO to the function.
+## Project structure
 
-### 5. YAML State Machine Validation
-
-State transitions are declared in YAML and verified against code:
-
-```toml
-# docpact.toml
-"RN-004" = { type = "state_transition", from_estado = "atender",
-  to_cualquiera = ["asignado", "remoto", "programado"],
-  yaml_source = "soporte/state_machine/tickets.yaml" }
 ```
-
-docpact reads the YAML directly — no dict duplication needed.
-
-## CONTRATO Template
-
-Copy-paste this into any new function's docstring. Fill in the fields.
-
-### Minimal (no side effects)
-
-```python
-def get_active_users(cliente_id):
-    """Return active users for a client.
-
-    CONTRATO:
-      input:
-        cliente_id: int — Client identifier
-      output: QuerySet[Usuario] — Active users belonging to the client
-      side_effects: ninguno
-      rn: [RN-CL-002]
-    """
+src/docpact/
+├── api.py                    # Public Python API
+├── bridge.py                 # Internal component bridge
+├── briefing.py               # Briefing generation
+├── config.py                 # Configuration loading
+├── config_suggest.py         # Auto-suggest docpact.toml patterns
+├── generator.py              # CONTRATO skeleton generator
+├── guard.py                  # Runtime guard
+├── index.py                  # Pre-computed index for MCP
+├── installer.py              # MCP host installer
+├── llm_generator.py          # LLM-powered CONTRATO generation
+├── llm_judge.py              # LLM-powered quality evaluation
+├── mcp_server.py             # MCP server (27 tools, 2,674 LoC)
+├── reporter.py               # Report generation
+├── runner.py                 # Dynamic sandbox runner
+├── cli/
+│   ├── main.py               # CLI entry point (67 LoC)
+│   └── commands/             # 23 subcommands
+├── checker/                  # 22 verification modules
+│   ├── orchestrator.py       # Pipeline coordinator
+│   ├── rn_checker.py         # RN pattern verification
+│   ├── contract_index.py     # CONTRATO index
+│   ├── side_effects.py       # Side effect detection
+│   └── semantic/             # 5 semantic validators
+├── models/
+│   └── contrato.py           # CONTRATO dataclass
+├── parser/                   # Python + TypeScript parsers
+├── runtime/
+│   └── pytest_plugin.py      # pytest integration
+└── schema/
+    └── validator.py          # CONTRATO schema validation
 ```
-
-### Full (with side effects and error cases)
-
-```python
-def crear_ticket(editor, cliente, titulo):
-    """Create a support ticket.
-
-    CONTRATO:
-      input:
-        editor: AbstractUser — User creating the ticket
-        cliente: Cliente — Client associated
-        titulo: str — Ticket title
-      output: Ticket — Created ticket instance
-      side_effects: db_write, email
-      rn:
-        - RN-001: Base ticket states
-        - RN-FAC-003: Clients without contract can't create tickets
-      borde:
-        cliente_restringido: PermissionError
-    """
-```
-
-### Delegation (trusts callees for side effects)
-
-```python
-def process_maintenance(maintenance):
-    """Process a maintenance request end-to-end.
-
-    CONTRATO:
-      input:
-        maintenance: Mantencion — Maintenance record
-      output: Mantencion — Updated maintenance record
-      side_effects: service_delegation
-      rn: [RN-MANT-001]
-    """
-```
-
-Use `service_delegation` when the function calls other functions and you don't want to enumerate every callee's side effects. docpact will still verify that callees have their own CONTRATOs.
-
-## Troubleshooting
-
-### "Funciones sin CONTRATO"
-
-**Meaning:** Public functions exist without a `CONTRATO` docstring block.
-
-**Fix:** Add a `CONTRATO:` section to the docstring of each flagged function. Use the template above.
-
-```bash
-# Auto-generate skeletons for all functions missing CONTRATOs:
-docpact init . --batch
-```
-
-### "side_effects mismatch"
-
-**Meaning:** A function declares `side_effects: ninguno` but calls another function that does `db_write`, sends emails, etc. Or vice versa.
-
-**Fix:** Check what the function actually calls. If it calls `Model.save()`, add `db_write`. If it calls `send_email()`, add `email`. If it delegates everything to callees, use `service_delegation`.
-
-```bash
-# Re-check after fixing:
-docpact check .
-```
-
-### "ORDER_FAIL"
-
-**Meaning:** An operation checks a condition AFTER performing an action it should have blocked first. For example, checking permissions after already modifying the database.
-
-**Fix:** Move the validation check BEFORE the operation it guards. The CONTRATO's `borde` field should list conditions checked before the main action.
-
-### "RN pattern not found"
-
-**Meaning:** `docpact verify-rn` can't find the code pattern for a business rule.
-
-**Fix:** Add a pattern to `rn_verifier.py` that proves the rule is implemented. This is usually a specific function call, model method, or conditional check.
-
-```bash
-# Check which RNs are missing patterns:
-docpact verify-rn --project-root .
-# Get suggestions:
-docpact config-suggest --project-root .
-```
-
-### "Tests NOT_FOUND"
-
-**Meaning:** An RN declared in a CONTRATO has no corresponding test in `tests/rn/`.
-
-**Fix:** Create a test file at `tests/rn/test_rn_<RN-ID>.py` that exercises the business rule.
-
-## Installation
-
-```bash
-pip install docpact
-```
-
-For YAML state machine support:
-```bash
-pip install docpact[yaml]
-```
-
-For semantic search (FastEmbed):
-```bash
-pip install docpact[semantic]
-```
-
-Python 3.10+. Core dependencies: stdlib only. Optional: pyyaml, fastembed.
-
-## Further Reading
-
-- **[Agent Guide](DOCPACT_AGENT_GUIDE.md)** — Complete MCP tools reference, workflow patterns, and troubleshooting for AI agents
-- **[Architecture Brief](docs/architecture-brief.md)** — Pipeline architecture, key directories, and critical invariants
-- **[Contrato Protocol v1](docs/protocolo-v1/)** — Formal specification (7 documents)
 
 ## License
 
