@@ -422,3 +422,153 @@ class TestBuildAgentContext:
 
         assert "no functions indexed" in ctx
         assert "no RNs indexed" in ctx
+# ── Tests: metricas_violaciones ──
+
+
+class TestMetricasViolaciones:
+    """Tests para tool_metricas_violaciones."""
+
+    def test_sin_datos(self, tmp_path):
+        """Sin datos retorna total 0."""
+        import docpact.mcp_server as mcp
+        result = mcp.tool_metricas_violaciones(str(tmp_path))
+        assert result["total"] == 0
+        assert result["dias"] == 30
+        assert result["tendencia"] == "insuficiente"
+        assert result["top_violadores"] == []
+
+    def test_con_datos(self, tmp_path):
+        """Con datos en DB retorna métricas."""
+        from docpact.checker.metrics_store import record_run
+        from docpact.checker.models import (
+            ResultadoProyecto, ResultadoArchivo, ResultadoFuncion, Hallazgo,
+        )
+        from docpact.config import DocpactConfig
+
+        # Create a fake verification result
+        h = Hallazgo(tipo="error", campo="rn", funcion="crear_ticket",
+                     archivo="tickets.py", linea=42, mensaje="RN-TKT-001 no encontrada")
+        rf = ResultadoFuncion(nombre="crear_ticket", archivo="tickets.py", linea=42, tiene_contrato=False)
+        rf.hallazgos = [h]
+        ra = ResultadoArchivo(archivo="tickets.py")
+        ra.funciones = [rf]
+        resultado = ResultadoProyecto(config=DocpactConfig())
+        resultado.archivos = [ra]
+
+        record_run(resultado, project_root=tmp_path)
+
+        import docpact.mcp_server as mcp
+        result = mcp.tool_metricas_violaciones(str(tmp_path), days=30)
+        assert result["total"] >= 1
+        assert len(result["top_violadores"]) >= 1
+        assert result["top_violadores"][0]["function"] == "crear_ticket"
+
+    def test_dias_custom(self, tmp_path):
+        """Acepta parámetro days custom."""
+        import docpact.mcp_server as mcp
+        result = mcp.tool_metricas_violaciones(str(tmp_path), days=7)
+        assert result["dias"] == 7
+
+    def test_dispatch_wired(self):
+        """Dispatch routea correctamente."""
+        import docpact.mcp_server as mcp
+        result = mcp._dispatch_tool("metricas_violaciones", {"project_root": "/nonexistent"})
+        # Should not return unknown tool error
+        assert "Tool desconocida" not in str(result.get("error", ""))
+
+
+# ── Tests: sugerir_reglas ──
+
+
+class TestSugerirReglas:
+    """Tests para tool_sugerir_reglas."""
+
+    def test_sin_datos(self, tmp_path):
+        """Sin datos retorna sugerencias vacías."""
+        import docpact.mcp_server as mcp
+        result = mcp.tool_sugerir_reglas(str(tmp_path))
+        assert result["total_sugerencias"] == 0
+        assert result["sugerencias"] == []
+
+    def test_con_violaciones(self, tmp_path):
+        """Con violaciones agrupa y sugiere."""
+        from docpact.checker.metrics_store import record_run
+        from docpact.checker.models import (
+            ResultadoProyecto, ResultadoArchivo, ResultadoFuncion, Hallazgo,
+        )
+        from docpact.config import DocpactConfig
+
+        # Create 5 similar violations (above threshold of 3)
+        hallazgos = []
+        for i in range(5):
+            h = Hallazgo(tipo="error", campo="side_effects", funcion=f"func_{i}",
+                         archivo=f"file_{i}.py", linea=i, mensaje="side_effect no declarado: db_write")
+            hallazgos.append(h)
+        rf = ResultadoFuncion(nombre="test_func", archivo="test.py", linea=1, tiene_contrato=False)
+        rf.hallazgos = hallazgos
+        ra = ResultadoArchivo(archivo="test.py")
+        ra.funciones = [rf]
+        resultado = ResultadoProyecto(config=DocpactConfig())
+        resultado.archivos = [ra]
+        record_run(resultado, project_root=tmp_path)
+
+        import docpact.mcp_server as mcp
+        result = mcp.tool_sugerir_reglas(str(tmp_path))
+        # Should find at least one suggestion from violation patterns
+        assert result["total_sugerencias"] >= 1
+        assert all("tipo" in s for s in result["sugerencias"])
+        assert all("titulo" in s for s in result["sugerencias"])
+
+    def test_dispatch_wired(self):
+        """Dispatch routea correctamente."""
+        import docpact.mcp_server as mcp
+        result = mcp._dispatch_tool("sugerir_reglas", {"project_root": "/nonexistent"})
+        assert "Tool desconocida" not in str(result.get("error", ""))
+
+
+# ── Tests: salud_reglas ──
+
+
+class TestSaludReglas:
+    """Tests para tool_salud_reglas."""
+
+    def test_sin_registro(self, tmp_path):
+        """Sin REGISTRO.md retorna 0 reglas."""
+        import docpact.mcp_server as mcp
+        result = mcp.tool_salud_reglas(str(tmp_path))
+        assert result["total_reglas"] == 0
+        assert result["score_global"] == 0
+
+    def test_con_registro(self, tmp_path):
+        """Con REGISTRO.md calcula salud por regla."""
+        # Create minimal REGISTRO.md
+        docs_dir = tmp_path / "docs" / "reglas-del-negocio"
+        docs_dir.mkdir(parents=True)
+        registro = docs_dir / "REGISTRO.md"
+        registro.write_text(
+            "| ID | Descripcion |\n"
+            "|---|---|\n"
+            "| RN-TKT-001 | Tickets deben tener prioridad |\n"
+            "| RN-TKT-002 | Tickets no pueden estar vacios |\n"
+        )
+
+        import docpact.mcp_server as mcp
+        result = mcp.tool_salud_reglas(str(tmp_path))
+        assert result["total_reglas"] == 2
+        assert len(result["reglas"]) == 2
+        assert "score_global" in result
+        assert "sanas" in result
+        assert "precaucion" in result
+        assert "criticas" in result
+        # Each rule should have expected keys
+        for r in result["reglas"]:
+            assert "rn_id" in r
+            assert "score" in r
+            assert "estado" in r
+            assert r["estado"] in ("sana", "precaucion", "critica")
+
+    def test_dispatch_wired(self):
+        """Dispatch routea correctamente."""
+        import docpact.mcp_server as mcp
+        result = mcp._dispatch_tool("salud_reglas", {"project_root": "/nonexistent"})
+        assert "Tool desconocida" not in str(result.get("error", ""))

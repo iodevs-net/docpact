@@ -1254,6 +1254,67 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "metricas_violaciones",
+        "description": (
+            "Retorna tendencias de violaciones, top archivos violadores, y conteos diarios. "
+            "Lee el store persistido (.docpact/metrics/violations.jsonl) y calcula: "
+            "tendencia (mejorando/empeorando/estable), top 10 archivos con mas violaciones, "
+            "conteo diario, y desglose por tipo y campo.\n\n"
+            "EJEMPLO - Ultimos 30 dias:\n"
+            "  Llamada: metricas_violaciones()\n"
+            "  Retorna: {dias: 30, total: 47, tendencia: 'mejorando', "
+            "top_violadores: [{archivo: 'tickets.py', violaciones: 12}], "
+            "conteos_diarios: {'2026-06-01': 5, '2026-06-02': 3}}\n\n"
+            "EJEMPLO - Ultimos 7 dias:\n"
+            "  Llamada: metricas_violaciones(days=7)"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {"type": "string", "description": "Raiz del proyecto (default: directorio actual)"},
+                "days": {"type": "integer", "description": "Dias hacia atras para analizar (default: 30)", "default": 30},
+            },
+        },
+    },
+    {
+        "name": "sugerir_reglas",
+        "description": (
+            "Sugiere nuevas reglas basandose en dos fuentes: (1) patrones de violaciones frecuentes "
+            "que ameritan una regla formal, y (2) comportamientos repetidos en el codigo que no tienen CONTRATO. "
+            "Retorna sugerencias priorizadas por frecuencia.\n\n"
+            "EJEMPLO - Obtener sugerencias:\n"
+            "  Llamada: sugerir_reglas()\n"
+            "  Retorna: {total_sugerencias: 5, sugerencias: [\n"
+            "    {tipo: 'error', titulo: 'Patron frecuente: side_effects', "
+            "razon: '7 violaciones del mismo tipo detectadas', confianza: 'alta', "
+            "funciones: ['crear_ticket', 'editar_ticket'], ocurrencias: 7}]}"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {"type": "string", "description": "Raiz del proyecto (default: directorio actual)"},
+            },
+        },
+    },
+    {
+        "name": "salud_reglas",
+        "description": (
+            "Calcula un score de salud (0-1) para cada RN del proyecto basado en: tasa de violaciones, "
+            "si tiene test de verificacion, y antiguedad. Clasifica cada regla como sana (>=0.7), "
+            "precaucion (>=0.4), o critica (<0.4).\n\n"
+            "EJEMPLO - Ver salud de reglas:\n"
+            "  Llamada: salud_reglas()\n"
+            "  Retorna: {total_reglas: 12, score_global: 0.72, sanas: 8, precaucion: 3, criticas: 1, "
+            "reglas: [{rn_id: 'RN-TKT-001', score: 0.85, estado: 'sana', test_coverage: 1.0}]}"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {"type": "string", "description": "Raiz del proyecto (default: directorio actual)"},
+            },
+        },
+    },
 ]
 
 
@@ -2244,6 +2305,163 @@ def tool_priorizar_reglas(
             "Score: confianza (3pts) + categoría (1.5pts) + tipo (1pt) + evidencia (hasta 2pts) + spread (hasta 1pt)."
         ),
     }
+def tool_metricas_violaciones(project_root: str | None = None, days: int = 30) -> dict[str, Any]:
+    """Tool 25: Retorna tendencias de violaciones, top violadores, y conteos diarios."""
+    import os
+    root = project_root or os.environ.get("DOCPACT_PROJECT_ROOT", ".")
+    try:
+        from docpact.checker.metrics_store import get_top_violators, _connect
+        from datetime import datetime, timedelta, timezone
+        from pathlib import Path
+
+        top = get_top_violators(top_n=10, days=days, project_root=root)
+
+        # Aggregate daily counts + severity breakdown from DB
+        cutoff_ts = __import__("time").time() - days * 86400
+        conn = _connect(Path(root))
+        try:
+            rows = conn.execute(
+                "SELECT DATE(s.ts, 'unixepoch') as day, "
+                "SUM(v.severity='error') as errors, "
+                "SUM(v.severity='warning') as warnings, "
+                "COUNT(*) as total "
+                "FROM violations v JOIN snapshots s ON v.snapshot_id=s.id "
+                "WHERE s.ts>=? GROUP BY day ORDER BY day",
+                (cutoff_ts,),
+            ).fetchall()
+            conteos = {r["day"]: {"total": r["total"], "errors": r["errors"], "warnings": r["warnings"]} for r in rows}
+
+            # Trend direction
+            totals = [r["total"] for r in rows]
+            if len(totals) >= 2:
+                mid = len(totals) // 2
+                first = sum(totals[:mid]) / mid if mid else 0
+                second = sum(totals[mid:]) / (len(totals) - mid)
+                tendencia = "mejorando" if second < first * 0.85 else "empeorando" if second > first * 1.15 else "estable"
+            else:
+                tendencia = "insuficiente"
+        finally:
+            conn.close()
+
+        return {
+            "dias": days,
+            "total": sum(c["total"] for c in conteos.values()),
+            "tendencia": tendencia,
+            "top_violadores": top,
+            "conteos_diarios": conteos,
+        }
+    except Exception as e:
+        return {"error": f"Error calculando metricas: {e}"}
+
+
+def tool_sugerir_reglas(project_root: str | None = None) -> dict[str, Any]:
+    """Tool 26: Sugiere reglas basadas en patrones de violaciones y codigo repetido."""
+    import os
+    from pathlib import Path
+    root = project_root or os.environ.get("DOCPACT_PROJECT_ROOT", ".")
+    try:
+        from docpact.checker.rule_suggester import suggest_from_violations, suggest_from_code
+        from docpact.checker.metrics_store import _connect
+        from docpact.checker.models import Hallazgo
+
+        # Get raw violations from DB as Hallazgo-like objects
+        conn = _connect(Path(root))
+        try:
+            rows = conn.execute(
+                "SELECT severity, message, function, file, line FROM violations "
+                "JOIN snapshots ON violations.snapshot_id=snapshots.id "
+                "WHERE snapshots.ts>=? ORDER BY snapshots.ts DESC LIMIT 500",
+                (__import__("time").time() - 30 * 86400,),
+            ).fetchall()
+        finally:
+            conn.close()
+
+        hallazgos = [
+            Hallazgo(tipo=r["severity"], campo="", funcion=r["function"],
+                     archivo=r["file"], linea=r["line"], mensaje=r["message"])
+            for r in rows
+        ]
+        sug_viol = suggest_from_violations(hallazgos)
+
+        # Code pattern suggestions
+        sug_code: list = []
+        try:
+            from docpact.checker.rule_discovery import escanear_proyecto
+            desc = escanear_proyecto(Path(root))
+            pattern_map: dict[str, list[str]] = {}
+            for r in desc.get("reglas", []):
+                label = r.get("titulo", r.get("tipo", "desconocido"))
+                func = r.get("funcion", r.get("archivo", ""))
+                pattern_map.setdefault(label, []).append(func)
+            sug_code = suggest_from_code(pattern_map)
+        except Exception:
+            pass
+
+        all_sug = sug_viol + sug_code
+        all_sug.sort(key=lambda s: s.ocurrencias, reverse=True)
+        return {
+            "total_sugerencias": len(all_sug),
+            "sugerencias": [
+                {"tipo": s.tipo, "titulo": s.titulo, "razon": s.razon,
+                 "confianza": s.confianza, "funciones": s.funciones, "ocurrencias": s.ocurrencias}
+                for s in all_sug
+            ],
+        }
+    except Exception as e:
+        return {"error": f"Error sugiriendo reglas: {e}"}
+
+
+def tool_salud_reglas(project_root: str | None = None) -> dict[str, Any]:
+    """Tool 27: Retorna score de salud para cada RN del proyecto."""
+    import os
+    import re
+    root = project_root or os.environ.get("DOCPACT_PROJECT_ROOT", ".")
+    try:
+        from docpact.checker.rule_suggester import calculate_rule_health
+        from docpact.checker.rn_registry import cargar_registro
+        from docpact.checker.metrics_store import get_violation_history
+
+        registro = cargar_registro(root)
+        if not registro:
+            return {"total_reglas": 0, "reglas": [], "score_global": 0}
+
+        rns_con_test: set[str] = set()
+        if _index:
+            for fd in _index.get("funciones", {}).values():
+                if fd.get("tiene_test"):
+                    for rn_id in fd.get("rn_ids", []):
+                        rns_con_test.add(rn_id)
+
+        reglas = []
+        for rn_id in sorted(registro):
+            hist = get_violation_history(rn_id, days=90, project_root=root)
+            vc = sum(h["count"] for h in hist)
+            health = calculate_rule_health(
+                rn_id,
+                violation_count=vc,
+                total_checks=max(1, vc),
+                has_test=rn_id in rns_con_test,
+            )
+            reglas.append({
+                "rn_id": health.rule_id,
+                "score": health.score,
+                "violation_rate": health.violation_rate,
+                "test_coverage": health.test_coverage,
+                "age_days": health.age_days,
+                "estado": "sana" if health.score >= 0.7 else "precaucion" if health.score >= 0.4 else "critica",
+            })
+
+        score_global = round(sum(r["score"] for r in reglas) / len(reglas), 4) if reglas else 0
+        return {
+            "total_reglas": len(reglas),
+            "score_global": score_global,
+            "sanas": sum(1 for r in reglas if r["estado"] == "sana"),
+            "precaucion": sum(1 for r in reglas if r["estado"] == "precaucion"),
+            "criticas": sum(1 for r in reglas if r["estado"] == "critica"),
+            "reglas": reglas,
+        }
+    except Exception as e:
+        return {"error": f"Error calculando salud: {e}"}
 
 
 
@@ -2287,6 +2505,12 @@ def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
             top_n=args.get("top_n", 200),
             umbral_dedup=args.get("umbral_dedup", 0.7),
         ),
+        "metricas_violaciones": lambda: tool_metricas_violaciones(
+            args.get("project_root"),
+            days=args.get("days", 30),
+        ),
+        "sugerir_reglas": lambda: tool_sugerir_reglas(args.get("project_root")),
+        "salud_reglas": lambda: tool_salud_reglas(args.get("project_root")),
     }
     fn = dispatch.get(tool_name)
     if fn is None:
