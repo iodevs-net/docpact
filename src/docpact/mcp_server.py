@@ -1214,6 +1214,46 @@ TOOLS = [
             "required": ["descripcion", "tipo", "function_name"],
         },
     },
+    {
+        "name": "priorizar_reglas",
+        "description": (
+            "Pipeline completo: extrae RNs del código, deduplica por similitud, prioriza por score, "
+            "y retorna progressive disclosure. Diseñado para convertir 6K+ reglas crudas en una lista "
+            "accionable de ~200 reglas priorizadas.\n\n"
+            "El output tiene 3 niveles de detalle:\n"
+            "1. resumen_categorias: visión general por categoría (auth, billing, etc.) con conteos y top rule\n"
+            "2. top_reglas: las N reglas más importantes con score, tipo, confianza, evidencia, archivo\n"
+            "3. por_categoria: detalle completo por categoría para deep-dive on-demand\n\n"
+            "EJEMPLO — Pipeline completo:\n"
+            "  Llamada: priorizar_reglas()\n"
+            "  Retorna: {total_extraidas: 6234, duplicados_eliminados: 5980, total_unicas: 254, top_n: 200,\n"
+            "    resumen_categorias: [{categoria: 'auth', total: 45, score_max: 9.8, tipos: ['permiso']}],\n"
+            "    top_reglas: [{score: 9.8, categoria: 'auth', titulo: 'Requiere autenticación', ...}],\n"
+            "    por_categoria: {auth: [...], billing: [...], ...}}\n\n"
+            "EJEMPLO — Con parámetros:\n"
+            "  Llamada: priorizar_reglas(top_n=50, umbral_dedup=0.8)\n"
+            "  (top_n=50 para un resumen más conciso, umbral más alto = dedup más agresivo)"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_root": {
+                    "type": "string",
+                    "description": "Raíz del proyecto (default: directorio actual)",
+                },
+                "top_n": {
+                    "type": "integer",
+                    "description": "Cantidad de reglas top a retornar con detalle completo (default: 200)",
+                    "default": 200,
+                },
+                "umbral_dedup": {
+                    "type": "number",
+                    "description": "Umbral de similitud para dedup (0-1). Mayor = más agresivo. Default: 0.7",
+                    "default": 0.7,
+                },
+            },
+        },
+    },
 ]
 
 
@@ -2000,6 +2040,212 @@ def tool_descubrir_reglas(project_root: str | None = None) -> dict[str, Any]:
         return {"error": f"Error descubriendo reglas: {e}"}
 
 
+def _deduplicar_reglas(reglas: list[dict[str, Any]], umbral: float = 0.7) -> list[dict[str, Any]]:
+    """Elimina reglas duplicadas por similitud de descripción.
+
+    Mantiene la regla con mayor confianza de cada cluster de duplicados.
+    """
+    if not reglas:
+        return []
+
+    unicas: list[dict[str, Any]] = []
+    merged_indices: set[int] = set()
+
+    for i, regla in enumerate(reglas):
+        if i in merged_indices:
+            continue
+
+        cluster = [i]
+
+        for j in range(i + 1, len(reglas)):
+            if j in merged_indices:
+                continue
+            texto_a = f"{regla.get('titulo', '')} {regla.get('descripcion', '')}"
+            texto_b = f"{reglas[j].get('titulo', '')} {reglas[j].get('descripcion', '')}"
+            sim = _calcular_similitud(texto_a, texto_b)
+            if sim >= umbral:
+                cluster.append(j)
+                merged_indices.add(j)
+
+        confianza_orden = {"alta": 0, "media": 1, "baja": 2}
+        best_idx = min(cluster, key=lambda idx: (
+            confianza_orden.get(reglas[idx].get("confianza", "baja"), 2),
+            -reglas[idx].get("_evidencia_count", 0),
+        ))
+        best = dict(reglas[best_idx])
+        best["duplicados_eliminados"] = len(cluster) - 1
+        unicas.append(best)
+
+    return unicas
+
+
+_PESOS_CATEGORIA: dict[str, float] = {
+    "auth": 2.0,
+    "billing": 1.8,
+    "tenant": 1.7,
+    "validation": 1.5,
+    "sla": 1.5,
+    "state": 1.3,
+    "roles": 1.3,
+    "inventory": 1.2,
+    "ticket": 1.0,
+    "notification": 0.8,
+    "audit": 0.7,
+}
+
+_PESOS_TIPO: dict[str, float] = {
+    "permiso": 1.5,
+    "validacion": 1.3,
+    "negocio": 1.0,
+    "notificacion": 0.7,
+    "auditoria": 0.5,
+}
+
+_PESOS_CONFIANZA: dict[str, float] = {
+    "alta": 3.0,
+    "media": 2.0,
+    "baja": 1.0,
+}
+
+
+def _priorizar_reglas(reglas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Score y sort de reglas por importancia.
+
+    Scoring formula:
+      score = (confianza * 2.0) + (peso_categoria * 1.5) + (peso_tipo * 1.0)
+              + min(evidencia_count / 10, 2.0) + spread_bonus
+    """
+    for regla in reglas:
+        confianza = _PESOS_CONFIANZA.get(regla.get("confianza", "baja"), 1.0)
+        categoria = _PESOS_CATEGORIA.get(regla.get("categoria", ""), 1.0)
+        tipo = _PESOS_TIPO.get(regla.get("tipo", "negocio"), 1.0)
+        evidencia = min(regla.get("_evidencia_count", 1) / 10.0, 2.0)
+        spread = min(regla.get("_archivos_count", 1) / 5.0, 1.0)
+
+        regla["score"] = round(
+            (confianza * 2.0) + (categoria * 1.5) + (tipo * 1.0) + evidencia + spread,
+            2,
+        )
+
+    return sorted(reglas, key=lambda r: r["score"], reverse=True)
+
+
+def _construir_resumen_categorias(reglas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Construye resumen agrupado por categoría para progressive disclosure."""
+    por_cat: dict[str, list[dict[str, Any]]] = {}
+    for r in reglas:
+        por_cat.setdefault(r.get("categoria", "other"), []).append(r)
+
+    resumen = []
+    for cat, rules_in_cat in sorted(por_cat.items(), key=lambda x: -len(x[1])):
+        top_score = max(r["score"] for r in rules_in_cat)
+        tipos = list(set(r.get("tipo", "") for r in rules_in_cat))
+        confianzas: dict[str, int] = {}
+        for r in rules_in_cat:
+            c = r.get("confianza", "baja")
+            confianzas[c] = confianzas.get(c, 0) + 1
+
+        resumen.append({
+            "categoria": cat,
+            "total": len(rules_in_cat),
+            "score_max": top_score,
+            "tipos": tipos,
+            "confianza": confianzas,
+            "top_titulo": rules_in_cat[0]["titulo"],
+        })
+
+    return resumen
+
+
+def tool_priorizar_reglas(
+    project_root: str | None = None,
+    top_n: int = 200,
+    umbral_dedup: float = 0.7,
+) -> dict[str, Any]:
+    """Tool 24: Pipeline completo de dedup + priorización para reglas extraídas.
+
+    1. Extrae RNs del código (extraer_rns)
+    2. Deduplica por similitud de descripción (mantiene la de mayor confianza)
+    3. Score y sort por importancia (confianza, categoría, tipo, evidencia, spread)
+    4. Progressive disclosure: resumen por categoría → top N → detalle on-demand
+
+    Diseñado para procesar 6K+ reglas extraídas en una lista accionable de ~200.
+    """
+    import os
+    root = project_root or os.environ.get("DOCPACT_PROJECT_ROOT", ".")
+
+    # ── Step 1: Extract ──
+    try:
+        from docpact.checker.rn_extractor import extraer_rns_de_proyecto
+        resultado = extraer_rns_de_proyecto(Path(root))
+    except Exception as e:
+        return {"error": f"Error extrayendo RNs: {e}"}
+
+    reglas_raw = resultado.get("rnsDetalle", [])
+    if not reglas_raw:
+        return {
+            "pipeline": "priorizar_reglas",
+            "total_extraidas": 0,
+            "mensaje": "No se encontraron reglas en el proyecto.",
+        }
+
+    total_extraidas = len(reglas_raw)
+
+    # ── Step 2: Dedup ──
+    reglas_unicas = _deduplicar_reglas(reglas_raw, umbral=umbral_dedup)
+    total_deduplicadas = total_extraidas - len(reglas_unicas)
+
+    # ── Step 3: Prioritize ──
+    reglas_priorizadas = _priorizar_reglas(reglas_unicas)
+
+    # ── Step 4: Progressive disclosure ──
+    resumen_categorias = _construir_resumen_categorias(reglas_priorizadas)
+
+    top_reglas = []
+    for r in reglas_priorizadas[:top_n]:
+        top_reglas.append({
+            "score": r["score"],
+            "categoria": r["categoria"],
+            "tipo": r["tipo"],
+            "titulo": r["titulo"],
+            "descripcion": r["descripcion"],
+            "confianza": r["confianza"],
+            "evidencia": r.get("evidencia", ""),
+            "archivo": r.get("archivo", ""),
+            "linea": r.get("linea", 0),
+            "duplicados_eliminados": r.get("duplicados_eliminados", 0),
+        })
+
+    por_categoria: dict[str, list[dict[str, Any]]] = {}
+    for r in reglas_priorizadas:
+        cat = r.get("categoria", "other")
+        if cat not in por_categoria:
+            por_categoria[cat] = []
+        por_categoria[cat].append({
+            "score": r["score"],
+            "titulo": r["titulo"],
+            "confianza": r["confianza"],
+            "archivo": r.get("archivo", ""),
+        })
+
+    return {
+        "pipeline": "priorizar_reglas",
+        "total_extraidas": total_extraidas,
+        "duplicados_eliminados": total_deduplicadas,
+        "total_unicas": len(reglas_unicas),
+        "top_n": min(top_n, len(reglas_unicas)),
+        "resumen_categorias": resumen_categorias,
+        "top_reglas": top_reglas,
+        "por_categoria": por_categoria,
+        "instruccion_agente": (
+            "Usá resumen_categorias para entender el panorama general. "
+            "top_reglas contiene las reglas más importantes ordenadas por score. "
+            "por_categoria permite deep-dive en una categoría específica. "
+            "Score: confianza (3pts) + categoría (1.5pts) + tipo (1pt) + evidencia (hasta 2pts) + spread (hasta 1pt)."
+        ),
+    }
+
+
 
 
 def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
@@ -2035,6 +2281,11 @@ def _dispatch_tool(tool_name: str, args: dict[str, Any]) -> Any:
             return_type=args.get("return_type", "Any"),
             side_effects=args.get("side_effects"),
             business_rules=args.get("business_rules"),
+        ),
+        "priorizar_reglas": lambda: tool_priorizar_reglas(
+            args.get("project_root"),
+            top_n=args.get("top_n", 200),
+            umbral_dedup=args.get("umbral_dedup", 0.7),
         ),
     }
     fn = dispatch.get(tool_name)
