@@ -35,6 +35,9 @@ Use this skill when:
 | Extracting RNs from code | `extraer_rns` | Extract business rules from existing codebases |
 | Predicting bugs | `predecir_bugs` | Detect common bug patterns via AST analysis |
 | Generating code | `generar_codigo` | Generate code skeleton with CONTRATO from NL |
+| Living rules metrics | `metricas_violaciones` | Track violation trends over time |
+| Suggesting rules | `sugerir_reglas` | Auto-suggest rules from patterns |
+| Rule health | `salud_reglas` | Check rule health and deprecation candidates |
 | Committing changes | `validar_cambio` | Pre-commit verification |
 
 
